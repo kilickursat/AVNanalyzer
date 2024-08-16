@@ -9,8 +9,6 @@ import statsmodels.api as sm
 from scipy.stats import gaussian_kde
 from scipy.interpolate import griddata
 
-st.set_option('deprecation.showPyplotGlobalUse', False)
-
 # Helper function to clean numeric columns
 def clean_numeric_column(df, column_name):
     df[column_name] = df[column_name].replace(r'[^0-9.-]+', '', regex=True)
@@ -38,11 +36,10 @@ def preprocess_rock_strength_data(df):
 def create_correlation_heatmap(df):
     features = ['Revolution [rpm]', 'Thrust force [kN]', 'Chainage', 'Calculated torque [kNm]', 'Penetration_Rate', 'Working pressure [bar]']
     corr_matrix = df[features].corr()
-    plt.figure(figsize=(12, 10))
-    sns.heatmap(corr_matrix, annot=True, cmap='coolwarm', vmin=-1, vmax=1, center=0)
-    plt.title('Correlation Heatmap of Selected Parameters')
-    plt.tight_layout()
-    st.pyplot()
+    fig, ax = plt.subplots(figsize=(12, 10))
+    sns.heatmap(corr_matrix, annot=True, cmap='coolwarm', vmin=-1, vmax=1, center=0, ax=ax)
+    ax.set_title('Correlation Heatmap of Selected Parameters')
+    st.pyplot(fig)
 
 # Function to create statistical summary
 def create_statistical_summary(df, round_to=2):
@@ -134,60 +131,64 @@ def create_multi_axis_violin_plots(df):
     st.plotly_chart(fig)
 
 # Streamlit app
-st.title("Machine Parameter Analysis and Rock Strength Comparison")
+def main():
+    st.title("Machine Parameter Analysis and Rock Strength Comparison")
 
-# Sidebar for file upload
-st.sidebar.header("Upload your data")
-uploaded_file = st.sidebar.file_uploader("Choose a CSV or Excel file", type=['csv', 'xlsx'])
+    # Sidebar for file upload
+    st.sidebar.header("Upload your data")
+    uploaded_file = st.sidebar.file_uploader("Choose a CSV or Excel file", type=['csv', 'xlsx'])
 
-if uploaded_file is not None:
-    df = load_data(uploaded_file)
+    if uploaded_file is not None:
+        df = load_data(uploaded_file)
 
-    if df is not None:
-        # Sidebar navigation for visualization
-        st.sidebar.header("Select Visualization")
-        options = st.sidebar.radio("Choose visualization type", ['Correlation Heatmap', 'Statistical Summary', '3D Spectrogram', 'Box Plots', 'Violin Plots'])
+        if df is not None:
+            # Sidebar navigation for visualization
+            st.sidebar.header("Select Visualization")
+            options = st.sidebar.radio("Choose visualization type", ['Correlation Heatmap', 'Statistical Summary', '3D Spectrogram', 'Box Plots', 'Violin Plots'])
 
-        # Preprocess and clean the data
-        if uploaded_file.name.endswith('.csv'):
-            # Assuming specific column names as per the provided code
-            df = df.rename(columns={
-                df.columns[13]: 'Arbeitsdruck',
-                df.columns[7]: 'Drehzahl',
-                df.columns[30]: 'Advance rate (mm/min)',
-                df.columns[17]: 'Thrust force [kN]',
-                df.columns[27]: 'Chainage',
-                df.columns[2]: 'Relative time',
-                df.columns[28]: 'Weg VTP [mm]',
-                'AzV.V13_SR_Pos_Grad | DB    60.DBD   236': 'SR Position [Grad]',
-                'AzV.V13_SR_ArbDr_Z | DB    60.DBD    26': 'Working pressure [bar]',
-                'AzV.V13_SR_Drehz_nach_Abgl_Z | DB    60.DBD    30': 'Revolution [rpm]'
-            })
+            # Preprocess and clean the data
+            if uploaded_file.name.endswith('.csv'):
+                # Assuming specific column names as per the provided code
+                df = df.rename(columns={
+                    df.columns[13]: 'Arbeitsdruck',
+                    df.columns[7]: 'Drehzahl',
+                    df.columns[30]: 'Advance rate (mm/min)',
+                    df.columns[17]: 'Thrust force [kN]',
+                    df.columns[27]: 'Chainage',
+                    df.columns[2]: 'Relative time',
+                    df.columns[28]: 'Weg VTP [mm]',
+                    'AzV.V13_SR_Pos_Grad | DB    60.DBD   236': 'SR Position [Grad]',
+                    'AzV.V13_SR_ArbDr_Z | DB    60.DBD    26': 'Working pressure [bar]',
+                    'AzV.V13_SR_Drehz_nach_Abgl_Z | DB    60.DBD    30': 'Revolution [rpm]'
+                })
 
-            numeric_columns = ['Working pressure [bar]', 'Revolution [rpm]', 'Thrust force [kN]', 'Chainage', 'Relative time', 'Weg VTP [mm]', 'SR Position [Grad]']
-            for col in numeric_columns:
-                df = clean_numeric_column(df, col)
+                numeric_columns = ['Working pressure [bar]', 'Revolution [rpm]', 'Thrust force [kN]', 'Chainage', 'Relative time', 'Weg VTP [mm]', 'SR Position [Grad]']
+                for col in numeric_columns:
+                    df = clean_numeric_column(df, col)
 
-        # Calculate Penetration_Rate and Calculated torque
-        df['Penetration_Rate'] = df['Advance rate (mm/min)'] / df['Revolution [rpm]']
-        df['Calculated torque [kNm]'] = df['Working pressure [bar]'] * 0.1  # Assuming a linear relationship
+            # Calculate Penetration_Rate and Calculated torque
+            df['Penetration_Rate'] = df['Advance rate (mm/min)'] / df['Revolution [rpm]']
+            df['Calculated torque [kNm]'] = df['Working pressure [bar]'] * 0.1  # Assuming a linear relationship
 
-        # Sidebar for rock strength data if Excel is uploaded
-        if uploaded_file.name.endswith('.xlsx'):
-            rock_strength_df = preprocess_rock_strength_data(df)
-            st.sidebar.subheader("Select Rock Type")
-            rock_type = st.sidebar.selectbox("Rock Type", rock_strength_df.index)
+            # Sidebar for rock strength data if Excel is uploaded
+            if uploaded_file.name.endswith('.xlsx'):
+                rock_strength_df = preprocess_rock_strength_data(df)
+                st.sidebar.subheader("Select Rock Type")
+                rock_type = st.sidebar.selectbox("Rock Type", rock_strength_df.index)
 
-        # Display selected visualization
-        if options == 'Correlation Heatmap':
-            create_correlation_heatmap(df)
-        elif options == 'Statistical Summary':
-            create_statistical_summary(df)
-        elif options == '3D Spectrogram':
-            create_3d_spectrogram(df)
-        elif options == 'Box Plots':
-            create_multi_axis_box_plots(df)
-        elif options == 'Violin Plots':
-            create_multi_axis_violin_plots(df)
-else:
-    st.info("Please upload a CSV or Excel file to begin.")
+            # Display selected visualization
+            if options == 'Correlation Heatmap':
+                create_correlation_heatmap(df)
+            elif options == 'Statistical Summary':
+                create_statistical_summary(df)
+            elif options == '3D Spectrogram':
+                create_3d_spectrogram(df)
+            elif options == 'Box Plots':
+                create_multi_axis_box_plots(df)
+            elif options == 'Violin Plots':
+                create_multi_axis_violin_plots(df)
+    else:
+        st.info("Please upload a CSV or Excel file to begin.")
+
+if __name__ == "__main__":
+    main()
