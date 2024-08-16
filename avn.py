@@ -168,10 +168,12 @@ def create_3d_spectrogram(df):
     y = df['Revolution [rpm]'].values
     z = df['Calculated torque [kNm]'].values
 
+    # Creating a grid for smoother interpolation
     xi = np.linspace(x.min(), x.max(), 100)
     yi = np.linspace(y.min(), y.max(), 100)
     zi = griddata((x, y), z, (xi[None, :], yi[:, None]), method='cubic')
 
+    # 3D surface plot
     fig = go.Figure(data=[go.Surface(x=xi, y=yi, z=zi, colorscale='Viridis')])
 
     fig.update_layout(
@@ -179,7 +181,10 @@ def create_3d_spectrogram(df):
         scene=dict(
             xaxis_title='Working Pressure [bar]',
             yaxis_title='Revolution [rpm]',
-            zaxis_title='Calculated Torque [kNm]'
+            zaxis_title='Calculated Torque [kNm]',
+            xaxis=dict(nticks=10),
+            yaxis=dict(nticks=10),
+            zaxis=dict(nticks=10)
         ),
         autosize=False,
         width=800,
