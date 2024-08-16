@@ -5,8 +5,6 @@ import matplotlib.pyplot as plt
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import seaborn as sns
-import statsmodels.api as sm
-from scipy.stats import gaussian_kde
 from scipy.interpolate import griddata
 from scipy import stats
 
@@ -83,7 +81,7 @@ def create_statistical_summary(df, round_to=2):
     summary = pd.DataFrame(summary_dict).transpose()
     st.dataframe(summary)
 
-# Function to create 3D spectrogram with adjustable interpolation
+# Function to create 3D spectrogram with proper 3D spectrum visualization
 def create_3d_spectrogram(df):
     x = df['Working pressure [bar]'].values
     y = df['Revolution [rpm]'].values
@@ -108,6 +106,53 @@ def create_3d_spectrogram(df):
     )
 
     st.plotly_chart(fig)
+
+# Function to create Features vs Time plot
+def create_features_vs_time(df):
+    features = st.multiselect("Select features for Time Series plot", df.columns, default=[
+        'Revolution [rpm]', 'Thrust force [kN]', 'Calculated torque [kNm]', 'Penetration_Rate', 'Working pressure [bar]'
+    ])
+    if not features:
+        st.warning("Please select at least one feature.")
+        return
+    
+    fig, ax = plt.subplots(figsize=(12, 8))
+    for feature in features:
+        ax.plot(df['Relative time'], df[feature], label=feature)
+    
+    ax.set_xlabel('Time')
+    ax.set_ylabel('Values')
+    ax.set_title('Features vs Time')
+    ax.legend()
+    st.pyplot(fig)
+
+# Function to create Pressure Distribution Over Time Polar Plot
+def create_pressure_distribution_polar_plot(df):
+    fig = plt.figure(figsize=(8, 8))
+    ax = fig.add_subplot(111, polar=True)
+    ax.plot(df['Relative time'], df['Working pressure [bar]'])
+    
+    ax.set_title('Pressure Distribution Over Time (Polar Plot)')
+    st.pyplot(fig)
+
+# Function to create Parameters vs Chainage plot
+def create_parameters_vs_chainage(df):
+    features = st.multiselect("Select features for Chainage plot", df.columns, default=[
+        'Revolution [rpm]', 'Thrust force [kN]', 'Calculated torque [kNm]', 'Penetration_Rate'
+    ])
+    if not features:
+        st.warning("Please select at least one feature.")
+        return
+    
+    fig, ax = plt.subplots(figsize=(12, 8))
+    for feature in features:
+        ax.plot(df['Chainage'], df[feature], label=feature)
+    
+    ax.set_xlabel('Chainage')
+    ax.set_ylabel('Values')
+    ax.set_title('Parameters vs Chainage')
+    ax.legend()
+    st.pyplot(fig)
 
 # Function to create multi-axis box plots with additional features
 def create_multi_axis_box_plots(df):
@@ -177,7 +222,11 @@ def main():
         if df is not None:
             # Sidebar navigation for visualization
             st.sidebar.header("Select Visualization")
-            options = st.sidebar.radio("Choose visualization type", ['Correlation Heatmap', 'Statistical Summary', '3D Spectrogram', 'Box Plots', 'Violin Plots'])
+            options = st.sidebar.radio("Choose visualization type", [
+                'Correlation Heatmap', 'Statistical Summary', '3D Spectrogram', 
+                'Features vs Time', 'Pressure Distribution Polar Plot', 'Parameters vs Chainage', 
+                'Box Plots', 'Violin Plots'
+            ])
 
             # Preprocess and clean the data
             if uploaded_file.name.endswith('.csv'):
@@ -216,6 +265,12 @@ def main():
                 create_statistical_summary(df)
             elif options == '3D Spectrogram':
                 create_3d_spectrogram(df)
+            elif options == 'Features vs Time':
+                create_features_vs_time(df)
+            elif options == 'Pressure Distribution Polar Plot':
+                create_pressure_distribution_polar_plot(df)
+            elif options == 'Parameters vs Chainage':
+                create_parameters_vs_chainage(df)
             elif options == 'Box Plots':
                 create_multi_axis_box_plots(df)
             elif options == 'Violin Plots':
