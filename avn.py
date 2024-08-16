@@ -30,12 +30,67 @@ def load_data(file):
 
     return df
 
+def read_rock_strength_data(file):
+    try:
+        df = pd.read_excel(file)
+        return df
+    except Exception as e:
+        st.error(f"An error occurred while reading rock strength data: {e}")
+        return None
+
 # Function to preprocess the rock strength data
 def preprocess_rock_strength_data(df):
     df['Rock Type'] = df['Probenbezeichnung'].str.split().str[0]
     pivoted = df.pivot_table(values='Value', index='Rock Type', columns='Test', aggfunc='mean')
     pivoted.rename(columns={'UCS': 'UCS (MPa)', 'BTS': 'BTS (MPa)', 'PLT': 'PLT (MPa)'}, inplace=True)
     return pivoted
+
+# Function to create comparison chart for machine parameters vs rock strength
+def create_rock_strength_comparison_chart(machine_df, rock_df, rock_type):
+    rock_df = rock_df[rock_df.index == rock_type]
+    if rock_df.empty:
+        st.error(f"No data available for {rock_type} rock type.")
+        return
+
+    avg_advance_rate = machine_df['Advance rate (mm/min)'].mean()
+    avg_penetration_rate = machine_df['Penetration_Rate'].mean()
+    avg_torque = machine_df['Calculated torque [kNm]'].mean()
+    avg_pressure = machine_df['Working pressure [bar]'].mean()
+
+    parameters = ['Advance Rate\n(mm/min)', 'Penetration Rate\n(mm/rev)', 'Torque\n(kNm)', 'Working Pressure\n(bar)']
+    machine_values = [avg_advance_rate, avg_penetration_rate, avg_torque, avg_pressure]
+    ucs_values = [rock_df['UCS (MPa)'].iloc[0]] * 4
+    bts_values = [rock_df['BTS (MPa)'].iloc[0]] * 4
+    plt_values = [rock_df['PLT (MPa)'].iloc[0]] * 4
+
+    fig, axs = plt.subplots(2, 2, figsize=(16, 16), dpi=600)
+    fig.suptitle(f"Machine Parameters vs {rock_type} Rock Strength", fontsize=20, fontweight='bold')
+
+    colors = ['#a8e6cf', '#dcedc1', '#ffd3b6', '#ffaaa5']
+
+    for i, (param, ax) in enumerate(zip(parameters, axs.flat)):
+        x = np.arange(4)
+        width = 0.2
+
+        bars = ax.bar(x, [machine_values[i], ucs_values[i], bts_values[i], plt_values[i]], width, color=colors, edgecolor='black')
+
+        ax.set_ylabel('Value', fontsize=12, fontweight='bold')
+        ax.set_title(f'{rock_type} - {param}', fontsize=16, fontweight='bold')
+        ax.set_xticks(x)
+
+        machine_param_name = param.split('\n')[0]
+        ax.set_xticklabels([machine_param_name, 'UCS', 'BTS', 'PLT'], fontsize=12, fontweight='bold')
+
+        ax.tick_params(axis='y', labelsize=10)
+
+        for bar in bars:
+            height = bar.get_height()
+            ax.text(bar.get_x() + bar.get_width()/2., height,
+                    f'{height:.2f}', ha='center', va='bottom', fontsize=12, fontweight='bold')
+
+    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+
+    st.pyplot(fig)
 
 # Function to visualize correlation heatmap with dynamic input
 def create_correlation_heatmap(df):
@@ -255,6 +310,16 @@ def main():
     st.sidebar.header("Upload your data")
     uploaded_file = st.sidebar.file_uploader("Choose a CSV or Excel file", type=['csv', 'xlsx'])
 
+    rock_strength_file = st.sidebar.file_uploader("Upload Rock Strength Excel File", type=['xlsx'])
+    rock_df = None
+    rock_strength_data = None
+    if rock_strength_file:
+        rock_strength_data = read_rock_strength_data(rock_strength_file)
+        if rock_strength_data is not None:
+            rock_df = preprocess_rock_strength_data(rock_strength_data)
+            st.sidebar.subheader("Select Rock Type")
+            rock_type = st.sidebar.selectbox("Rock Type", rock_df.index)
+
     if uploaded_file is not None:
         df = load_data(uploaded_file)
 
@@ -264,7 +329,7 @@ def main():
             options = st.sidebar.radio("Choose visualization type", [
                 'Correlation Heatmap', 'Statistical Summary', '3D Spectrogram', 
                 'Features vs Time', 'Pressure Distribution Polar Plot', 'Parameters vs Chainage', 
-                'Box Plots', 'Violin Plots'
+                'Box Plots', 'Violin Plots', 'Rock Strength Comparison'
             ])
 
             # Preprocess and clean the data
@@ -291,12 +356,6 @@ def main():
             df['Penetration_Rate'] = df['Advance rate (mm/min)'] / df['Revolution [rpm]']
             df['Calculated torque [kNm]'] = df['Working pressure [bar]'] * 0.1  # Assuming a linear relationship
 
-            # Sidebar for rock strength data if Excel is uploaded
-            if uploaded_file.name.endswith('.xlsx'):
-                rock_strength_df = preprocess_rock_strength_data(df)
-                st.sidebar.subheader("Select Rock Type")
-                rock_type = st.sidebar.selectbox("Rock Type", rock_strength_df.index)
-
             # Display selected visualization
             if options == 'Correlation Heatmap':
                 create_correlation_heatmap(df)
@@ -307,13 +366,15 @@ def main():
             elif options == 'Features vs Time':
                 create_features_vs_time(df)
             elif options == 'Pressure Distribution Polar Plot':
-                create_pressure_distribution_polar_plot(df)
+                create_polar_plot(df)
             elif options == 'Parameters vs Chainage':
                 create_parameters_vs_chainage(df)
             elif options == 'Box Plots':
                 create_multi_axis_box_plots(df)
             elif options == 'Violin Plots':
                 create_multi_axis_violin_plots(df)
+            elif options == 'Rock Strength Comparison' and rock_df is not None:
+                create_rock_strength_comparison_chart(df, rock_df, rock_type)
     else:
         st.info("Please upload a CSV or Excel file to begin.")
 
