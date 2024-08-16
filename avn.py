@@ -298,7 +298,7 @@ def main():
             # Sidebar navigation for visualization
             st.sidebar.header("Select Visualization")
             options = st.sidebar.radio("Choose visualization type", [
-                'Correlation Heatmap', 'Statistical Summary', '3D Spectrogram', 
+                'Correlation Heatmap', 'Statistical Summary', 
                 'Features vs Time', 'Pressure Distribution Polar Plot', 'Parameters vs Chainage', 
                 'Box Plots', 'Violin Plots', 'Rock Strength Comparison'
             ])
