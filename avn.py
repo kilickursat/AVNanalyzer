@@ -9,6 +9,7 @@ import statsmodels.api as sm
 from scipy.stats import gaussian_kde
 from scipy.interpolate import griddata
 
+st.set_option('deprecation.showPyplotGlobalUse', False)
 
 # Helper function to clean numeric columns
 def clean_numeric_column(df, column_name):
@@ -37,14 +38,11 @@ def preprocess_rock_strength_data(df):
 def create_correlation_heatmap(df):
     features = ['Revolution [rpm]', 'Thrust force [kN]', 'Chainage', 'Calculated torque [kNm]', 'Penetration_Rate', 'Working pressure [bar]']
     corr_matrix = df[features].corr()
-    fig, ax = plt.subplots(figsize=(12, 10))
-    sns.heatmap(corr_matrix, annot=True, cmap='coolwarm', vmin=-1, vmax=1, center=0, ax=ax)
-    ax.set_title('Correlation Heatmap of Selected Parameters')
+    plt.figure(figsize=(12, 10))
+    sns.heatmap(corr_matrix, annot=True, cmap='coolwarm', vmin=-1, vmax=1, center=0)
+    plt.title('Correlation Heatmap of Selected Parameters')
     plt.tight_layout()
-    return fig
-
-# When calling the function:
-st.pyplot(create_correlation_heatmap(df))
+    st.pyplot()
 
 # Function to create statistical summary
 def create_statistical_summary(df, round_to=2):
@@ -169,6 +167,10 @@ if uploaded_file is not None:
             numeric_columns = ['Working pressure [bar]', 'Revolution [rpm]', 'Thrust force [kN]', 'Chainage', 'Relative time', 'Weg VTP [mm]', 'SR Position [Grad]']
             for col in numeric_columns:
                 df = clean_numeric_column(df, col)
+
+        # Calculate Penetration_Rate and Calculated torque
+        df['Penetration_Rate'] = df['Advance rate (mm/min)'] / df['Revolution [rpm]']
+        df['Calculated torque [kNm]'] = df['Working pressure [bar]'] * 0.1  # Assuming a linear relationship
 
         # Sidebar for rock strength data if Excel is uploaded
         if uploaded_file.name.endswith('.xlsx'):
