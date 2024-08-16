@@ -37,6 +37,49 @@ def preprocess_rock_strength_data(df):
     pivoted.rename(columns={'UCS': 'UCS (MPa)', 'BTS': 'BTS (MPa)', 'PLT': 'PLT (MPa)'}, inplace=True)
     return pivoted
 
+# Function to visualize correlation heatmap with dynamic input
+def create_correlation_heatmap(df):
+    features = st.multiselect("Select features for correlation heatmap", df.columns, default=[
+        'Revolution [rpm]', 'Thrust force [kN]', 'Chainage', 'Calculated torque [kNm]', 'Penetration_Rate', 'Working pressure [bar]'
+    ])
+    if len(features) < 2:
+        st.warning("Please select at least two features.")
+        return
+    
+    corr_matrix = df[features].corr()
+    fig = sns.heatmap(corr_matrix, annot=True, cmap='coolwarm', vmin=-1, vmax=1, center=0)
+    fig.figure.set_size_inches(12, 10)
+    fig.set_title('Correlation Heatmap of Selected Parameters')
+    st.pyplot(fig.figure)
+
+# Function to create statistical summary with additional stats
+def create_statistical_summary(df, round_to=2):
+    features = st.multiselect("Select features for statistical summary", df.columns, default=[
+        'Revolution [rpm]', 'Penetration_Rate', 'Calculated torque [kNm]', 'Thrust force [kN]'
+    ])
+    if not features:
+        st.warning("Please select at least one feature.")
+        return
+
+    summary_dict = {}
+    for feature in features:
+        summary_dict[feature] = {
+            'count': int(df[feature].count()),
+            'mean': round(df[feature].mean(), round_to),
+            'median': round(df[feature].median(), round_to),
+            'std': round(df[feature].std(), round_to),
+            'min': round(df[feature].min(), round_to),
+            '25%': round(df[feature].quantile(0.25), round_to),
+            '50%': round(df[feature].quantile(0.50), round_to),
+            '75%': round(df[feature].quantile(0.75), round_to),
+            'max': round(df[feature].max(), round_to),
+            'skewness': round(df[feature].skew(), round_to),
+            'kurtosis': round(df[feature].kurtosis(), round_to)
+        }
+
+    summary = pd.DataFrame(summary_dict).transpose()
+    st.dataframe(summary)
+
 # Function to create Features vs Time plot with Plotly subplots
 def create_features_vs_time(df):
     features = st.multiselect("Select features for Time Series plot", df.columns, default=[
@@ -53,15 +96,16 @@ def create_features_vs_time(df):
     fig.update_layout(height=300 * len(features), width=1000, title_text='Features vs Time')
     st.plotly_chart(fig)
 
-# Function to create Pressure Distribution Over Time Polar Plot with Plotly
+# Function to create Pressure Distribution Over Time Polar Plot with Plotly (using scatter plots)
 def create_pressure_distribution_polar_plot(df):
     fig = go.Figure()
 
     fig.add_trace(go.Scatterpolar(
         r=df['Working pressure [bar]'],
         theta=df['Relative time'],
-        mode='lines',
-        name='Pressure Distribution'
+        mode='markers',
+        name='Pressure Distribution',
+        marker=dict(size=6, color='blue')
     ))
 
     fig.update_layout(
