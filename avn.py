@@ -9,7 +9,6 @@ import statsmodels.api as sm
 from scipy.stats import gaussian_kde
 from scipy.interpolate import griddata
 
-st.set_option('deprecation.showPyplotGlobalUse', False)
 
 # Helper function to clean numeric columns
 def clean_numeric_column(df, column_name):
@@ -38,11 +37,14 @@ def preprocess_rock_strength_data(df):
 def create_correlation_heatmap(df):
     features = ['Revolution [rpm]', 'Thrust force [kN]', 'Chainage', 'Calculated torque [kNm]', 'Penetration_Rate', 'Working pressure [bar]']
     corr_matrix = df[features].corr()
-    plt.figure(figsize=(12, 10))
-    sns.heatmap(corr_matrix, annot=True, cmap='coolwarm', vmin=-1, vmax=1, center=0)
-    plt.title('Correlation Heatmap of Selected Parameters')
+    fig, ax = plt.subplots(figsize=(12, 10))
+    sns.heatmap(corr_matrix, annot=True, cmap='coolwarm', vmin=-1, vmax=1, center=0, ax=ax)
+    ax.set_title('Correlation Heatmap of Selected Parameters')
     plt.tight_layout()
-    st.pyplot()
+    return fig
+
+# When calling the function:
+st.pyplot(create_correlation_heatmap(df))
 
 # Function to create statistical summary
 def create_statistical_summary(df, round_to=2):
