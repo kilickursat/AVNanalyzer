@@ -98,23 +98,51 @@ def create_features_vs_time(df):
 
 # Function to create Pressure Distribution Over Time Polar Plot with Plotly (using scatter plots)
 def create_pressure_distribution_polar_plot(df):
-    fig = go.Figure()
+    pressure_column = 'Working pressure [bar]'
+    time_normalized = np.linspace(0, 360, len(df))  # Normalizing time to 360 degrees
+    df[pressure_column] = pd.to_numeric(df[pressure_column], errors='coerce')
 
+    fig = go.Figure()
     fig.add_trace(go.Scatterpolar(
-        r=df['Working pressure [bar]'],
-        theta=df['Relative time'],
+        r=df[pressure_column],
+        theta=time_normalized,
         mode='markers',
-        name='Pressure Distribution',
-        marker=dict(size=6, color='blue')
+        marker=dict(color='blue', size=5),
+        name='Pressure'
     ))
+
+    max_pressure = df[pressure_column].max()
+    if pd.isna(max_pressure):
+        max_pressure = 1
 
     fig.update_layout(
         title='Pressure Distribution Over Time (Polar Plot)',
         polar=dict(
-            radialaxis=dict(visible=True, range=[df['Working pressure [bar]'].min(), df['Working pressure [bar]'].max()])
+            radialaxis=dict(
+                visible=True,
+                range=[0, max_pressure * 1.1],
+                showline=False,
+                showgrid=True,
+                gridcolor='lightgrey',
+                tickfont=dict(size=10)
+            ),
+            angularaxis=dict(
+                tickmode='linear',
+                tick0=0,
+                dtick=45,
+                showline=False,
+                showgrid=True,
+                gridcolor='lightgrey',
+                tickvals=[0, 45, 90, 135, 180, 225, 270, 315, 360],
+                ticktext=['0°', '45°', '90°', '135°', '180°', '225°', '270°', '315°', '360°'],
+                direction='clockwise',
+                rotation=90
+            )
         ),
+        showlegend=False,
+        template='plotly_white',
         height=600,
-        width=800
+        width=600
     )
     st.plotly_chart(fig)
 
