@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import seaborn as sns
@@ -38,48 +37,58 @@ def preprocess_rock_strength_data(df):
     pivoted.rename(columns={'UCS': 'UCS (MPa)', 'BTS': 'BTS (MPa)', 'PLT': 'PLT (MPa)'}, inplace=True)
     return pivoted
 
-# Function to visualize correlation heatmap with dynamic input
-def create_correlation_heatmap(df):
-    features = st.multiselect("Select features for correlation heatmap", df.columns, default=[
-        'Revolution [rpm]', 'Thrust force [kN]', 'Chainage', 'Calculated torque [kNm]', 'Penetration_Rate', 'Working pressure [bar]'
-    ])
-    if len(features) < 2:
-        st.warning("Please select at least two features.")
-        return
-    
-    corr_matrix = df[features].corr()
-    fig, ax = plt.subplots(figsize=(12, 10))
-    sns.heatmap(corr_matrix, annot=True, cmap='coolwarm', vmin=-1, vmax=1, center=0, ax=ax)
-    ax.set_title('Correlation Heatmap of Selected Parameters')
-    st.pyplot(fig)
-
-# Function to create statistical summary with additional stats
-def create_statistical_summary(df, round_to=2):
-    features = st.multiselect("Select features for statistical summary", df.columns, default=[
-        'Revolution [rpm]', 'Penetration_Rate', 'Calculated torque [kNm]', 'Thrust force [kN]'
+# Function to create Features vs Time plot with Plotly subplots
+def create_features_vs_time(df):
+    features = st.multiselect("Select features for Time Series plot", df.columns, default=[
+        'Revolution [rpm]', 'Thrust force [kN]', 'Calculated torque [kNm]', 'Penetration_Rate', 'Working pressure [bar]'
     ])
     if not features:
         st.warning("Please select at least one feature.")
         return
+    
+    fig = make_subplots(rows=len(features), cols=1, shared_xaxes=True, subplot_titles=features)
+    for i, feature in enumerate(features, start=1):
+        fig.add_trace(go.Scatter(x=df['Relative time'], y=df[feature], mode='lines', name=feature), row=i, col=1)
 
-    summary_dict = {}
-    for feature in features:
-        summary_dict[feature] = {
-            'count': int(df[feature].count()),
-            'mean': round(df[feature].mean(), round_to),
-            'median': round(df[feature].median(), round_to),
-            'std': round(df[feature].std(), round_to),
-            'min': round(df[feature].min(), round_to),
-            '25%': round(df[feature].quantile(0.25), round_to),
-            '50%': round(df[feature].quantile(0.50), round_to),
-            '75%': round(df[feature].quantile(0.75), round_to),
-            'max': round(df[feature].max(), round_to),
-            'skewness': round(df[feature].skew(), round_to),
-            'kurtosis': round(df[feature].kurtosis(), round_to)
-        }
+    fig.update_layout(height=300 * len(features), width=1000, title_text='Features vs Time')
+    st.plotly_chart(fig)
 
-    summary = pd.DataFrame(summary_dict).transpose()
-    st.dataframe(summary)
+# Function to create Pressure Distribution Over Time Polar Plot with Plotly
+def create_pressure_distribution_polar_plot(df):
+    fig = go.Figure()
+
+    fig.add_trace(go.Scatterpolar(
+        r=df['Working pressure [bar]'],
+        theta=df['Relative time'],
+        mode='lines',
+        name='Pressure Distribution'
+    ))
+
+    fig.update_layout(
+        title='Pressure Distribution Over Time (Polar Plot)',
+        polar=dict(
+            radialaxis=dict(visible=True, range=[df['Working pressure [bar]'].min(), df['Working pressure [bar]'].max()])
+        ),
+        height=600,
+        width=800
+    )
+    st.plotly_chart(fig)
+
+# Function to create Parameters vs Chainage plot with Plotly subplots
+def create_parameters_vs_chainage(df):
+    features = st.multiselect("Select features for Chainage plot", df.columns, default=[
+        'Revolution [rpm]', 'Thrust force [kN]', 'Calculated torque [kNm]', 'Penetration_Rate'
+    ])
+    if not features:
+        st.warning("Please select at least one feature.")
+        return
+    
+    fig = make_subplots(rows=len(features), cols=1, shared_xaxes=True, subplot_titles=features)
+    for i, feature in enumerate(features, start=1):
+        fig.add_trace(go.Scatter(x=df['Chainage'], y=df[feature], mode='lines', name=feature), row=i, col=1)
+
+    fig.update_layout(height=300 * len(features), width=1000, title_text='Parameters vs Chainage')
+    st.plotly_chart(fig)
 
 # Function to create 3D spectrogram with proper 3D spectrum visualization
 def create_3d_spectrogram(df):
@@ -106,53 +115,6 @@ def create_3d_spectrogram(df):
     )
 
     st.plotly_chart(fig)
-
-# Function to create Features vs Time plot
-def create_features_vs_time(df):
-    features = st.multiselect("Select features for Time Series plot", df.columns, default=[
-        'Revolution [rpm]', 'Thrust force [kN]', 'Calculated torque [kNm]', 'Penetration_Rate', 'Working pressure [bar]'
-    ])
-    if not features:
-        st.warning("Please select at least one feature.")
-        return
-    
-    fig, ax = plt.subplots(figsize=(12, 8))
-    for feature in features:
-        ax.plot(df['Relative time'], df[feature], label=feature)
-    
-    ax.set_xlabel('Time')
-    ax.set_ylabel('Values')
-    ax.set_title('Features vs Time')
-    ax.legend()
-    st.pyplot(fig)
-
-# Function to create Pressure Distribution Over Time Polar Plot
-def create_pressure_distribution_polar_plot(df):
-    fig = plt.figure(figsize=(8, 8))
-    ax = fig.add_subplot(111, polar=True)
-    ax.plot(df['Relative time'], df['Working pressure [bar]'])
-    
-    ax.set_title('Pressure Distribution Over Time (Polar Plot)')
-    st.pyplot(fig)
-
-# Function to create Parameters vs Chainage plot
-def create_parameters_vs_chainage(df):
-    features = st.multiselect("Select features for Chainage plot", df.columns, default=[
-        'Revolution [rpm]', 'Thrust force [kN]', 'Calculated torque [kNm]', 'Penetration_Rate'
-    ])
-    if not features:
-        st.warning("Please select at least one feature.")
-        return
-    
-    fig, ax = plt.subplots(figsize=(12, 8))
-    for feature in features:
-        ax.plot(df['Chainage'], df[feature], label=feature)
-    
-    ax.set_xlabel('Chainage')
-    ax.set_ylabel('Values')
-    ax.set_title('Parameters vs Chainage')
-    ax.legend()
-    st.pyplot(fig)
 
 # Function to create multi-axis box plots with additional features
 def create_multi_axis_box_plots(df):
