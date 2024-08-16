@@ -218,36 +218,6 @@ def create_parameters_vs_chainage(df):
     fig.update_layout(height=300 * len(features), width=1000, title_text='Parameters vs Chainage')
     st.plotly_chart(fig)
 
-# Function to create 3D spectrogram with proper 3D spectrum visualization
-def create_3d_spectrogram(df):
-    x = df['Working pressure [bar]'].values
-    y = df['Revolution [rpm]'].values
-    z = df['Calculated torque [kNm]'].values
-
-    # Creating a grid for smoother interpolation
-    xi = np.linspace(x.min(), x.max(), 100)
-    yi = np.linspace(y.min(), y.max(), 100)
-    zi = griddata((x, y), z, (xi[None, :], yi[:, None]), method='cubic')
-
-    # 3D surface plot
-    fig = go.Figure(data=[go.Surface(x=xi, y=yi, z=zi, colorscale='Viridis')])
-
-    fig.update_layout(
-        title='3D Spectrogram of Key Parameters',
-        scene=dict(
-            xaxis_title='Working Pressure [bar]',
-            yaxis_title='Revolution [rpm]',
-            zaxis_title='Calculated Torque [kNm]',
-            xaxis=dict(nticks=10),
-            yaxis=dict(nticks=10),
-            zaxis=dict(nticks=10)
-        ),
-        autosize=False,
-        width=800,
-        height=800,
-    )
-
-    st.plotly_chart(fig)
 
 # Function to create multi-axis box plots with additional features
 def create_multi_axis_box_plots(df):
@@ -362,8 +332,6 @@ def main():
                 create_correlation_heatmap(df)
             elif options == 'Statistical Summary':
                 create_statistical_summary(df)
-            elif options == '3D Spectrogram':
-                create_3d_spectrogram(df)
             elif options == 'Features vs Time':
                 create_features_vs_time(df)
             elif options == 'Pressure Distribution Polar Plot':
