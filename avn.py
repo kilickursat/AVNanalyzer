@@ -8,22 +8,30 @@ import seaborn as sns
 import statsmodels.api as sm
 from scipy.stats import gaussian_kde
 from scipy.interpolate import griddata
+from scipy import stats
 
 # Helper function to clean numeric columns
 def clean_numeric_column(df, column_name):
     df[column_name] = df[column_name].replace(r'[^0-9.-]+', '', regex=True)
     df[column_name] = pd.to_numeric(df[column_name], errors='coerce')
+    df[column_name] = df[column_name].fillna(df[column_name].median())
     return df
 
-# Function to read CSV or Excel file
+# Enhanced Function to read CSV or Excel file with validation
 def load_data(file):
     if file.name.endswith('.csv'):
-        return pd.read_csv(file, sep=';', decimal=',', na_values=['', 'NA', 'N/A', 'nan', 'NaN'], keep_default_na=True)
+        df = pd.read_csv(file, sep=';', decimal=',', na_values=['', 'NA', 'N/A', 'nan', 'NaN'], keep_default_na=True)
     elif file.name.endswith('.xlsx'):
-        return pd.read_excel(file)
+        df = pd.read_excel(file)
     else:
         st.error("Unsupported file format")
         return None
+    
+    if df.empty:
+        st.error("The uploaded file is empty or not formatted correctly.")
+        return None
+
+    return df
 
 # Function to preprocess the rock strength data
 def preprocess_rock_strength_data(df):
@@ -32,20 +40,31 @@ def preprocess_rock_strength_data(df):
     pivoted.rename(columns={'UCS': 'UCS (MPa)', 'BTS': 'BTS (MPa)', 'PLT': 'PLT (MPa)'}, inplace=True)
     return pivoted
 
-# Function to visualize correlation heatmap
+# Function to visualize correlation heatmap with dynamic input
 def create_correlation_heatmap(df):
-    features = ['Revolution [rpm]', 'Thrust force [kN]', 'Chainage', 'Calculated torque [kNm]', 'Penetration_Rate', 'Working pressure [bar]']
+    features = st.multiselect("Select features for correlation heatmap", df.columns, default=[
+        'Revolution [rpm]', 'Thrust force [kN]', 'Chainage', 'Calculated torque [kNm]', 'Penetration_Rate', 'Working pressure [bar]'
+    ])
+    if len(features) < 2:
+        st.warning("Please select at least two features.")
+        return
+    
     corr_matrix = df[features].corr()
     fig, ax = plt.subplots(figsize=(12, 10))
     sns.heatmap(corr_matrix, annot=True, cmap='coolwarm', vmin=-1, vmax=1, center=0, ax=ax)
     ax.set_title('Correlation Heatmap of Selected Parameters')
     st.pyplot(fig)
 
-# Function to create statistical summary
+# Function to create statistical summary with additional stats
 def create_statistical_summary(df, round_to=2):
-    features = ['Revolution [rpm]', 'Penetration_Rate', 'Calculated torque [kNm]', 'Thrust force [kN]']
-    summary_dict = {}
+    features = st.multiselect("Select features for statistical summary", df.columns, default=[
+        'Revolution [rpm]', 'Penetration_Rate', 'Calculated torque [kNm]', 'Thrust force [kN]'
+    ])
+    if not features:
+        st.warning("Please select at least one feature.")
+        return
 
+    summary_dict = {}
     for feature in features:
         summary_dict[feature] = {
             'count': int(df[feature].count()),
@@ -56,13 +75,15 @@ def create_statistical_summary(df, round_to=2):
             '25%': round(df[feature].quantile(0.25), round_to),
             '50%': round(df[feature].quantile(0.50), round_to),
             '75%': round(df[feature].quantile(0.75), round_to),
-            'max': round(df[feature].max(), round_to)
+            'max': round(df[feature].max(), round_to),
+            'skewness': round(df[feature].skew(), round_to),
+            'kurtosis': round(df[feature].kurtosis(), round_to)
         }
 
     summary = pd.DataFrame(summary_dict).transpose()
     st.dataframe(summary)
 
-# Function to create 3D spectrogram
+# Function to create 3D spectrogram with adjustable interpolation
 def create_3d_spectrogram(df):
     x = df['Working pressure [bar]'].values
     y = df['Revolution [rpm]'].values
@@ -88,17 +109,23 @@ def create_3d_spectrogram(df):
 
     st.plotly_chart(fig)
 
-# Function to create multi-axis box plots
+# Function to create multi-axis box plots with additional features
 def create_multi_axis_box_plots(df):
-    features = ['Revolution [rpm]', 'Penetration_Rate', 'Calculated torque [kNm]', 'Thrust force [kN]']
+    features = st.multiselect("Select features for box plots", df.columns, default=[
+        'Revolution [rpm]', 'Penetration_Rate', 'Calculated torque [kNm]', 'Thrust force [kN]'
+    ])
+    if not features:
+        st.warning("Please select at least one feature.")
+        return
+    
     fig = make_subplots(rows=1, cols=1, specs=[[{"secondary_y": True}]])
     colors = ['blue', 'red', 'green', 'orange']
 
     for i, feature in enumerate(features):
-        if i < 2:
-            fig.add_trace(go.Box(y=df[feature], name=feature, marker_color=colors[i]), secondary_y=False)
+        if i < len(features) // 2:
+            fig.add_trace(go.Box(y=df[feature], name=feature, marker_color=colors[i % len(colors)]), secondary_y=False)
         else:
-            fig.add_trace(go.Box(y=df[feature], name=feature, marker_color=colors[i]), secondary_y=True)
+            fig.add_trace(go.Box(y=df[feature], name=feature, marker_color=colors[i % len(colors)]), secondary_y=True)
 
     fig.update_layout(
         title='Box Plots of Key Parameters',
@@ -109,17 +136,23 @@ def create_multi_axis_box_plots(df):
     )
     st.plotly_chart(fig)
 
-# Function to create multi-axis violin plots
+# Function to create multi-axis violin plots with added customization
 def create_multi_axis_violin_plots(df):
-    features = ['Revolution [rpm]', 'Penetration_Rate', 'Calculated torque [kNm]', 'Thrust force [kN]']
+    features = st.multiselect("Select features for violin plots", df.columns, default=[
+        'Revolution [rpm]', 'Penetration_Rate', 'Calculated torque [kNm]', 'Thrust force [kN]'
+    ])
+    if not features:
+        st.warning("Please select at least one feature.")
+        return
+    
     fig = make_subplots(rows=1, cols=1, specs=[[{"secondary_y": True}]])
     colors = ['blue', 'red', 'green', 'orange']
 
     for i, feature in enumerate(features):
-        if i < 2:
-            fig.add_trace(go.Violin(y=df[feature], name=feature, box_visible=True, meanline_visible=True, fillcolor=colors[i]), secondary_y=False)
+        if i < len(features) // 2:
+            fig.add_trace(go.Violin(y=df[feature], name=feature, box_visible=True, meanline_visible=True, fillcolor=colors[i % len(colors)]), secondary_y=False)
         else:
-            fig.add_trace(go.Violin(y=df[feature], name=feature, box_visible=True, meanline_visible=True, fillcolor=colors[i]), secondary_y=True)
+            fig.add_trace(go.Violin(y=df[feature], name=feature, box_visible=True, meanline_visible=True, fillcolor=colors[i % len(colors)]), secondary_y=True)
 
     fig.update_layout(
         title='Violin Plots of Key Parameters',
@@ -132,7 +165,7 @@ def create_multi_axis_violin_plots(df):
 
 # Streamlit app
 def main():
-    st.title("Machine Parameter Analysis and Rock Strength Comparison")
+    st.title("Enhanced Machine Parameter Analysis and Rock Strength Comparison")
 
     # Sidebar for file upload
     st.sidebar.header("Upload your data")
