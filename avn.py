@@ -6,6 +6,7 @@ from plotly.subplots import make_subplots
 import seaborn as sns
 from scipy.interpolate import griddata
 from scipy import stats
+import matplotlib.pyplot as plt
 
 # Helper function to clean numeric columns
 def clean_numeric_column(df, column_name):
