@@ -142,7 +142,51 @@ def create_statistical_summary(df, round_to=2):
         }
 
     summary = pd.DataFrame(summary_dict).transpose()
-    st.dataframe(summary)
+    
+    # Style the table
+    styled_summary = summary.style.set_properties(**{
+        'background-color': 'white',
+        'color': 'black',
+        'border-color': 'rgb(0, 62, 37)'
+    }).set_table_styles([
+        {'selector': 'th', 'props': [('background-color', 'rgb(0, 62, 37)'), ('color', 'white')]},
+        {'selector': 'tbody tr:nth-of-type(even)', 'props': [('background-color', 'rgba(0, 62, 37, 0.1)')]},
+        {'selector': 'tbody tr:last-of-type', 'props': [('border-bottom', '2px solid rgb(0, 62, 37)')]}
+    ]).format(precision=round_to)
+
+    # Convert styled DataFrame to HTML
+    styled_html = styled_summary.to_html()
+
+    # Add custom CSS to ensure the table fits within the Streamlit container
+    custom_css = """
+    <style>
+    table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    th, td {
+        text-align: right;
+        padding: 8px;
+        border: 1px solid rgb(0, 62, 37);
+    }
+    th {
+        background-color: rgb(0, 62, 37);
+        color: white;
+    }
+    tr:nth-of-type(even) {
+        background-color: rgba(0, 62, 37, 0.1);
+    }
+    tbody tr:last-of-type {
+        border-bottom: 2px solid rgb(0, 62, 37);
+    }
+    </style>
+    """
+
+    # Combine custom CSS with styled HTML table
+    final_html = custom_css + styled_html
+
+    # Display the styled table
+    st.markdown(final_html, unsafe_allow_html=True)
 
 # Function to create Features vs Time plot with Plotly subplots
 def create_features_vs_time(df):
