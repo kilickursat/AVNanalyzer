@@ -312,32 +312,33 @@ def add_logo():
             background-size: 140px;
             background-position: 10px 10px;
         }
-            }
-    [data-testid="stSidebar"]::before {
-        content: "";
-        display: block;
-        height: 100px; /* Adjust height */
-    }
-    [data-testid="stSidebar"] > div:first-child {
-        padding-top: 0rem;
-    }
-    .sidebar-content {
-        padding-top: 100px; /* Same as the ::before height */
-    }
-    .sidebar-content > * {
-        margin-bottom: 0.5rem !important; /* Reduce space between sidebar elements */
-    }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
+        [data-testid="stSidebar"]::before {
+            content: "";
+            display: block;
+            height: 150px; /* Increased height to avoid overlap */
+        }
+        [data-testid="stSidebar"] > div:first-child {
+            padding-top: 2rem; /* Added padding to push content down */
+        }
+        .sidebar-content {
+            padding-top: 150px; /* Same as the ::before height */
+        }
+        .sidebar-content > * {
+            margin-bottom: 0.5rem !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
 
 # Streamlit app
 def main():
     set_background_color()
     add_logo()
 
-    st.title("Enhanced Machine Parameter Analysis and Rock Strength Comparison")
+    st.set_page_config(page_title="Herrenknecht Hard Rock Data Analysis App", page_icon="https://github.com/kilickursat/AVNanalyzer/blob/main/Herrenknecht_logo.svg-1024x695.png?raw=true")
+    st.title("Herrenknecht Hard Rock Data Analysis App")
 
     # Sidebar for file upload
     st.sidebar.header("Upload your data")
