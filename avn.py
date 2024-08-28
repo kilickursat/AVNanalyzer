@@ -145,9 +145,17 @@ def create_features_vs_time(df):
         st.warning("Please select at least one feature.")
         return
     
+    colors = {
+        'Penetration_Rate': '#98fb98', # palegreen
+        'Calculated torque [kNm]': '#4b0082', # indigo
+        'Working pressure [bar]': '#ff00ff', # magenta
+        'Revolution [rpm]': '#0000cd', # mediumblue
+        'Thrust force [kN]': '#6495ed' # cornflowerblue
+    }
+
     fig = make_subplots(rows=len(features), cols=1, shared_xaxes=True, subplot_titles=features)
     for i, feature in enumerate(features, start=1):
-        fig.add_trace(go.Scatter(x=df['Relative time'], y=df[feature], mode='lines', name=feature), row=i, col=1)
+        fig.add_trace(go.Scatter(x=df['Relative time'], y=df[feature], mode='lines', name=feature, line=dict(color=colors.get(feature, '#000000'))), row=i, col=1)
 
     fig.update_layout(height=300 * len(features), width=1000, title_text='Features vs Time')
     st.plotly_chart(fig)
@@ -210,14 +218,22 @@ def create_parameters_vs_chainage(df):
     if not features:
         st.warning("Please select at least one feature.")
         return
+
+    df = df.sort_values(by='Chainage')  # Sort the data by Chainage
+
+    colors = {
+        'Penetration_Rate': '#98fb98', # palegreen
+        'Calculated torque [kNm]': '#4b0082', # indigo
+        'Revolution [rpm]': '#0000cd', # mediumblue
+        'Thrust force [kN]': '#6495ed' # cornflowerblue
+    }
     
     fig = make_subplots(rows=len(features), cols=1, shared_xaxes=True, subplot_titles=features)
     for i, feature in enumerate(features, start=1):
-        fig.add_trace(go.Scatter(x=df['Chainage'], y=df[feature], mode='lines', name=feature), row=i, col=1)
+        fig.add_trace(go.Scatter(x=df['Chainage'], y=df[feature], mode='lines', name=feature, line=dict(color=colors.get(feature, '#000000'))), row=i, col=1)
 
     fig.update_layout(height=300 * len(features), width=1000, title_text='Parameters vs Chainage')
     st.plotly_chart(fig)
-
 
 # Function to create multi-axis box plots with additional features
 def create_multi_axis_box_plots(df):
@@ -229,7 +245,7 @@ def create_multi_axis_box_plots(df):
         return
     
     fig = make_subplots(rows=1, cols=1, specs=[[{"secondary_y": True}]])
-    colors = ['blue', 'red', 'green', 'orange']
+    colors = ['#0000cd', '#6495ed', '#4b0082', '#ff00ff']  # Corresponding colors
 
     for i, feature in enumerate(features):
         if i < len(features) // 2:
@@ -256,7 +272,7 @@ def create_multi_axis_violin_plots(df):
         return
     
     fig = make_subplots(rows=1, cols=1, specs=[[{"secondary_y": True}]])
-    colors = ['blue', 'red', 'green', 'orange']
+    colors = ['#0000cd', '#6495ed', '#4b0082', '#ff00ff']  # Corresponding colors
 
     for i, feature in enumerate(features):
         if i < len(features) // 2:
@@ -273,8 +289,54 @@ def create_multi_axis_violin_plots(df):
     )
     st.plotly_chart(fig)
 
+def set_background_color():
+    st.markdown(
+        """
+        <style>
+        .stApp {
+            background-color: rgb(220, 234, 197);
+            color: black;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+
+def add_logo():
+    st.sidebar.markdown(
+        """
+        <style>
+        [data-testid="stSidebar"] {
+            background-image: url(https://github.com/kilickursat/AVNanalyzer/blob/main/Herrenknecht_logo.svg-1024x695.png?raw=true);
+            background-repeat: no-repeat;
+            background-size: 140px;
+            background-position: 10px 10px;
+        }
+            }
+    [data-testid="stSidebar"]::before {
+        content: "";
+        display: block;
+        height: 100px; /* Adjust height */
+    }
+    [data-testid="stSidebar"] > div:first-child {
+        padding-top: 0rem;
+    }
+    .sidebar-content {
+        padding-top: 100px; /* Same as the ::before height */
+    }
+    .sidebar-content > * {
+        margin-bottom: 0.5rem !important; /* Reduce space between sidebar elements */
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 # Streamlit app
 def main():
+    set_background_color()
+    add_logo()
+
     st.title("Enhanced Machine Parameter Analysis and Rock Strength Comparison")
 
     # Sidebar for file upload
@@ -319,15 +381,15 @@ def main():
                     'AzV.V13_SR_Drehz_nach_Abgl_Z | DB    60.DBD    30': 'Revolution [rpm]'
                 })
 
-                numeric_columns = ['Working pressure [bar]', 'Revolution [rpm]', 'Thrust force [kN]', 'Chainage', 'Relative time', 'Weg VTP [mm]', 'SR Position [Grad]']
+                numeric_columns = ['Working pressure [bar]', 'Revolution [rpm]', 'Thrust force [kN]', 'Chainage', 'Advance rate (mm/min)', 'Weg VTP [mm]']
                 for col in numeric_columns:
                     df = clean_numeric_column(df, col)
 
-            # Calculate Penetration_Rate and Calculated torque
+            # Calculate additional parameters
+            df['Calculated torque [kNm]'] = df['Working pressure [bar]'] * 0.1 * 3.14159 / 20
             df['Penetration_Rate'] = df['Advance rate (mm/min)'] / df['Revolution [rpm]']
-            df['Calculated torque [kNm]'] = df['Working pressure [bar]'] * 0.1  # Assuming a linear relationship
 
-            # Display selected visualization
+            # Visualization based on user selection
             if options == 'Correlation Heatmap':
                 create_correlation_heatmap(df)
             elif options == 'Statistical Summary':
@@ -335,17 +397,19 @@ def main():
             elif options == 'Features vs Time':
                 create_features_vs_time(df)
             elif options == 'Pressure Distribution Polar Plot':
-                create_polar_plot(df)
+                create_pressure_distribution_polar_plot(df)
             elif options == 'Parameters vs Chainage':
                 create_parameters_vs_chainage(df)
             elif options == 'Box Plots':
                 create_multi_axis_box_plots(df)
             elif options == 'Violin Plots':
                 create_multi_axis_violin_plots(df)
-            elif options == 'Rock Strength Comparison' and rock_df is not None:
-                create_rock_strength_comparison_chart(df, rock_df, rock_type)
-    else:
-        st.info("Please upload a CSV or Excel file to begin.")
+            elif options == 'Rock Strength Comparison':
+                if rock_df is not None and rock_type:
+                    create_rock_strength_comparison_chart(df, rock_df, rock_type)
+                else:
+                    st.warning("Please upload rock strength data and select a rock type to view the comparison.")
 
 if __name__ == "__main__":
     main()
+        
