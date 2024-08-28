@@ -449,7 +449,8 @@ def main():
 
     # Add footer
     st.markdown("---")
-    st.markdown("© 2023 Herrenknecht AG. All rights reserved.")
+    st.markdown("© 2024 Herrenknecht AG. All rights reserved.")
+    st.markdown("Created by Kursat Kilic - Geotechnical Digitalization")
 
 if __name__ == "__main__":
     main()
