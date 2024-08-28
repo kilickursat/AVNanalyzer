@@ -1,4 +1,11 @@
 import streamlit as st
+
+# Set page config at the very beginning
+st.set_page_config(
+    page_title="Herrenknecht Hard Rock Data Analysis App",
+    page_icon="https://github.com/kilickursat/AVNanalyzer/blob/main/Herrenknecht_logo.svg-1024x695.png?raw=true"
+)
+
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
@@ -331,13 +338,11 @@ def add_logo():
         unsafe_allow_html=True,
     )
 
-
 # Streamlit app
 def main():
     set_background_color()
     add_logo()
 
-    st.set_page_config(page_title="Herrenknecht Hard Rock Data Analysis App", page_icon="https://github.com/kilickursat/AVNanalyzer/blob/main/Herrenknecht_logo.svg-1024x695.png?raw=true")
     st.title("Herrenknecht Hard Rock Data Analysis App")
 
     # Sidebar for file upload
@@ -413,4 +418,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-        
