@@ -14,6 +14,7 @@ import seaborn as sns
 from scipy.interpolate import griddata
 from scipy import stats
 import matplotlib.pyplot as plt
+import base64
 
 # Helper function to clean numeric columns
 def clean_numeric_column(df, column_name):
