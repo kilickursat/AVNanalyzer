@@ -128,50 +128,62 @@ def create_statistical_summary(df, round_to=2):
     for feature in features:
         summary_dict[feature] = {
             'count': int(df[feature].count()),
-            'mean': f"{df[feature].mean():.{round_to}f}",
-            'median': f"{df[feature].median():.{round_to}f}",
-            'std': f"{df[feature].std():.{round_to}f}",
-            'min': f"{df[feature].min():.{round_to}f}",
-            '25%': f"{df[feature].quantile(0.25):.{round_to}f}",
-            '50%': f"{df[feature].quantile(0.50):.{round_to}f}",
-            '75%': f"{df[feature].quantile(0.75):.{round_to}f}",
-            'max': f"{df[feature].max():.{round_to}f}",
-            'skewness': f"{df[feature].skew():.{round_to}f}",
-            'kurtosis': f"{df[feature].kurtosis():.{round_to}f}"
+            'mean': round(df[feature].mean(), round_to),
+            'median': round(df[feature].median(), round_to),
+            'std': round(df[feature].std(), round_to),
+            'min': round(df[feature].min(), round_to),
+            '25%': round(df[feature].quantile(0.25), round_to),
+            '50%': round(df[feature].quantile(0.50), round_to),
+            '75%': round(df[feature].quantile(0.75), round_to),
+            'max': round(df[feature].max(), round_to),
+            'skewness': round(df[feature].skew(), round_to),
+            'kurtosis': round(df[feature].kurtosis(), round_to)
         }
 
     summary = pd.DataFrame(summary_dict).transpose()
     
-    # Convert DataFrame to HTML
-    html_table = summary.to_html(classes='dataframe', escape=False)
+    # Style the table
+    styled_summary = summary.style.set_properties(**{
+        'background-color': 'white',
+        'color': 'black',
+        'border-color': 'rgb(0, 62, 37)'
+    }).set_table_styles([
+        {'selector': 'th', 'props': [('background-color', 'rgb(0, 62, 37)'), ('color', 'white')]},
+        {'selector': 'tbody tr:nth-of-type(even)', 'props': [('background-color', 'rgba(0, 62, 37, 0.1)')]},
+        {'selector': 'tbody tr:last-of-type', 'props': [('border-bottom', '2px solid rgb(0, 62, 37)')]}
+    ]).format(precision=round_to)
 
-    # Custom CSS for table styling
+    # Convert styled DataFrame to HTML and remove the style block
+    styled_html = styled_summary.to_html()
+    styled_html = styled_html.split('</style>')[-1]  # Remove everything before and including </style>
+
+    # Add custom CSS to ensure the table fits within the Streamlit container
     custom_css = """
     <style>
-    .dataframe {
+    table {
         width: 100%;
         border-collapse: collapse;
     }
-    .dataframe th, .dataframe td {
+    th, td {
         text-align: right;
         padding: 8px;
         border: 1px solid rgb(0, 62, 37);
     }
-    .dataframe th {
+    th {
         background-color: rgb(0, 62, 37);
         color: white;
     }
-    .dataframe tr:nth-of-type(even) {
+    tr:nth-of-type(even) {
         background-color: rgba(0, 62, 37, 0.1);
     }
-    .dataframe tbody tr:last-of-type {
+    tbody tr:last-of-type {
         border-bottom: 2px solid rgb(0, 62, 37);
     }
     </style>
     """
 
-    # Combine custom CSS with HTML table
-    final_html = custom_css + html_table
+    # Combine custom CSS with styled HTML table
+    final_html = custom_css + styled_html
 
     # Display the styled table
     st.markdown(final_html, unsafe_allow_html=True)
