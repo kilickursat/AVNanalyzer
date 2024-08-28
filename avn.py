@@ -116,7 +116,6 @@ def create_correlation_heatmap(df):
     fig.set_title('Correlation Heatmap of Selected Parameters')
     st.pyplot(fig.figure)
 
-# Function to create statistical summary with additional stats
 def create_statistical_summary(df, round_to=2):
     features = st.multiselect("Select features for statistical summary", df.columns, default=[
         'Revolution [rpm]', 'Penetration_Rate', 'Calculated torque [kNm]', 'Thrust force [kN]'
@@ -129,22 +128,22 @@ def create_statistical_summary(df, round_to=2):
     for feature in features:
         summary_dict[feature] = {
             'count': int(df[feature].count()),
-            'mean': round(df[feature].mean(), round_to),
-            'median': round(df[feature].median(), round_to),
-            'std': round(df[feature].std(), round_to),
-            'min': round(df[feature].min(), round_to),
-            '25%': round(df[feature].quantile(0.25), round_to),
-            '50%': round(df[feature].quantile(0.50), round_to),
-            '75%': round(df[feature].quantile(0.75), round_to),
-            'max': round(df[feature].max(), round_to),
-            'skewness': round(df[feature].skew(), round_to),
-            'kurtosis': round(df[feature].kurtosis(), round_to)
+            'mean': f"{df[feature].mean():.{round_to}f}",
+            'median': f"{df[feature].median():.{round_to}f}",
+            'std': f"{df[feature].std():.{round_to}f}",
+            'min': f"{df[feature].min():.{round_to}f}",
+            '25%': f"{df[feature].quantile(0.25):.{round_to}f}",
+            '50%': f"{df[feature].quantile(0.50):.{round_to}f}",
+            '75%': f"{df[feature].quantile(0.75):.{round_to}f}",
+            'max': f"{df[feature].max():.{round_to}f}",
+            'skewness': f"{df[feature].skew():.{round_to}f}",
+            'kurtosis': f"{df[feature].kurtosis():.{round_to}f}"
         }
 
     summary = pd.DataFrame(summary_dict).transpose()
     
-    # Convert DataFrame to HTML without styling
-    html_table = summary.to_html(classes='dataframe', float_format=f'{{:.{round_to}f}}')
+    # Convert DataFrame to HTML
+    html_table = summary.to_html(classes='dataframe', escape=False)
 
     # Custom CSS for table styling
     custom_css = """
@@ -176,6 +175,7 @@ def create_statistical_summary(df, round_to=2):
 
     # Display the styled table
     st.markdown(final_html, unsafe_allow_html=True)
+    
 # Function to create Features vs Time plot with Plotly subplots
 def create_features_vs_time(df):
     features = st.multiselect("Select features for Time Series plot", df.columns, default=[
