@@ -316,28 +316,48 @@ def add_logo():
         [data-testid="stSidebar"] {
             background-image: url(https://github.com/kilickursat/AVNanalyzer/blob/main/Herrenknecht_logo.svg-1024x695.png?raw=true);
             background-repeat: no-repeat;
-            background-size: 140px;
+            background-size: 120px;
             background-position: 10px 10px;
+            padding-top: 120px;  /* Reduced padding */
         }
         [data-testid="stSidebar"]::before {
             content: "";
+            margin-bottom: 20px;  /* Reduced margin */
             display: block;
-            height: 150px; /* Increased height to avoid overlap */
         }
         [data-testid="stSidebar"] > div:first-child {
-            padding-top: 2rem; /* Added padding to push content down */
+            padding-top: 0;  /* Remove additional padding */
         }
         .sidebar-content {
-            padding-top: 150px; /* Same as the ::before height */
+            padding-top: 0;  /* Remove additional padding */
         }
         .sidebar-content > * {
             margin-bottom: 0.5rem !important;
+        }
+        /* Reduce the size of the headers in the sidebar */
+        .sidebar .sidebar-content div[data-testid="stMarkdownContainer"] > h1 {
+            font-size: 1.5em;
+            margin-top: 0;
+        }
+        .sidebar .sidebar-content div[data-testid="stMarkdownContainer"] > h2 {
+            font-size: 1.2em;
+            margin-top: 0;
+        }
+        /* Make the file uploader more compact */
+        .sidebar .sidebar-content [data-testid="stFileUploader"] {
+            margin-bottom: 0.5rem;
+        }
+        /* Adjust radio button spacing */
+        .sidebar .sidebar-content [data-testid="stRadio"] {
+            margin-bottom: 0.5rem;
+        }
+        .sidebar .sidebar-content [data-testid="stRadio"] > div {
+            margin-bottom: 0.2rem;
         }
         </style>
         """,
         unsafe_allow_html=True,
     )
-
 # Streamlit app
 def main():
     set_background_color()
@@ -345,32 +365,16 @@ def main():
 
     st.title("Herrenknecht Hard Rock Data Analysis App")
 
-    # Sidebar for file upload
-    st.sidebar.header("Upload your data")
-    uploaded_file = st.sidebar.file_uploader("Choose a CSV or Excel file", type=['csv', 'xlsx'])
-
-    rock_strength_file = st.sidebar.file_uploader("Upload Rock Strength Excel File", type=['xlsx'])
-    rock_df = None
-    rock_strength_data = None
-    if rock_strength_file:
-        rock_strength_data = read_rock_strength_data(rock_strength_file)
-        if rock_strength_data is not None:
-            rock_df = preprocess_rock_strength_data(rock_strength_data)
-            st.sidebar.subheader("Select Rock Type")
-            rock_type = st.sidebar.selectbox("Rock Type", rock_df.index)
+    # Sidebar for file upload and visualization selection
+    st.sidebar.header("Data Upload & Analysis")
+    
+    uploaded_file = st.sidebar.file_uploader("Machine Data (CSV/Excel)", type=['csv', 'xlsx'])
+    rock_strength_file = st.sidebar.file_uploader("Rock Strength Data (Excel)", type=['xlsx'])
 
     if uploaded_file is not None:
         df = load_data(uploaded_file)
 
         if df is not None:
-            # Sidebar navigation for visualization
-            st.sidebar.header("Select Visualization")
-            options = st.sidebar.radio("Choose visualization type", [
-                'Correlation Heatmap', 'Statistical Summary', 
-                'Features vs Time', 'Pressure Distribution Polar Plot', 'Parameters vs Chainage', 
-                'Box Plots', 'Violin Plots', 'Rock Strength Comparison'
-            ])
-
             # Preprocess and clean the data
             if uploaded_file.name.endswith('.csv'):
                 # Assuming specific column names as per the provided code
@@ -395,6 +399,22 @@ def main():
             df['Calculated torque [kNm]'] = df['Working pressure [bar]'] * 0.1 * 3.14159 / 20
             df['Penetration_Rate'] = df['Advance rate (mm/min)'] / df['Revolution [rpm]']
 
+            # Visualization selection
+            options = st.sidebar.radio("Choose visualization", [
+                'Correlation Heatmap', 'Statistical Summary', 
+                'Features vs Time', 'Pressure Distribution',
+                'Parameters vs Chainage', 'Box Plots', 
+                'Violin Plots', 'Rock Strength Comparison'
+            ])
+
+            # Rock strength data processing
+            rock_df = None
+            if rock_strength_file:
+                rock_strength_data = read_rock_strength_data(rock_strength_file)
+                if rock_strength_data is not None:
+                    rock_df = preprocess_rock_strength_data(rock_strength_data)
+                    rock_type = st.sidebar.selectbox("Select Rock Type", rock_df.index)
+
             # Visualization based on user selection
             if options == 'Correlation Heatmap':
                 create_correlation_heatmap(df)
@@ -402,7 +422,7 @@ def main():
                 create_statistical_summary(df)
             elif options == 'Features vs Time':
                 create_features_vs_time(df)
-            elif options == 'Pressure Distribution Polar Plot':
+            elif options == 'Pressure Distribution':
                 create_pressure_distribution_polar_plot(df)
             elif options == 'Parameters vs Chainage':
                 create_parameters_vs_chainage(df)
@@ -411,10 +431,24 @@ def main():
             elif options == 'Violin Plots':
                 create_multi_axis_violin_plots(df)
             elif options == 'Rock Strength Comparison':
-                if rock_df is not None and rock_type:
+                if rock_df is not None and 'rock_type' in locals():
                     create_rock_strength_comparison_chart(df, rock_df, rock_type)
                 else:
                     st.warning("Please upload rock strength data and select a rock type to view the comparison.")
+
+            # Add an option to download the processed data
+            if st.sidebar.button("Download Processed Data"):
+                csv = df.to_csv(index=False)
+                b64 = base64.b64encode(csv.encode()).decode()
+                href = f'<a href="data:file/csv;base64,{b64}" download="processed_data.csv">Download Processed CSV File</a>'
+                st.sidebar.markdown(href, unsafe_allow_html=True)
+
+    else:
+        st.info("Please upload a machine data file to begin analysis.")
+
+    # Add footer
+    st.markdown("---")
+    st.markdown("© 2023 Herrenknecht AG. All rights reserved.")
 
 if __name__ == "__main__":
     main()
