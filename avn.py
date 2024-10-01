@@ -384,7 +384,7 @@ def add_logo():
 def identify_special_columns(df):
     working_pressure_keywords = ['working pressure', 'arbeitsdruck', 'pressure', 'druck', 'arbdr', 'sr_arbdr', 'SR_Arbdr']
     revolution_keywords = ['revolution', 'drehzahl', 'rpm', 'drehz', 'sr_drehz', 'SR_Drehz']
-    advance_rate_keywords = ['advance rate', 'vortrieb', 'vorschub', 'penetration rate']
+    advance_rate_keywords = ['advance rate', 'vortrieb', 'vorschub', 'penetration rate', 'VTgeschw_Z','geschw','geschw_Z']
 
     working_pressure_cols = [col for col in df.columns if any(kw in col.lower() for kw in working_pressure_keywords)]
     revolution_cols = [col for col in df.columns if any(kw in col.lower() for kw in revolution_keywords)]
