@@ -381,19 +381,23 @@ def add_logo():
         unsafe_allow_html=True,
     )
 
-# Helper function to identify working pressure and advance rate columns
 def identify_special_columns(df):
-    working_pressure_cols = [col for col in df.columns if any(kw in col.lower() for kw in ['working pressure', 'arbeitsdruck', 'pressure'])]
-    advance_rate_cols = [col for col in df.columns if any(kw in col.lower() for kw in ['advance rate', 'vortrieb', 'vorschub'])]
-    return working_pressure_cols, advance_rate_cols
+    working_pressure_keywords = ['working pressure', 'arbeitsdruck', 'pressure', 'druck', 'arbdr', 'sr_arbdr', 'SR_Arbdr']
+    revolution_keywords = ['revolution', 'drehzahl', 'rpm', 'drehz', 'sr_drehz', 'SR_Drehz']
+    advance_rate_keywords = ['advance rate', 'vortrieb', 'vorschub', 'penetration rate']
 
-# Helper function to calculate torque and penetration rate
-def calculate_derived_features(df, working_pressure_col, advance_rate_col, revolution_col):
-    if working_pressure_col:
-        df['Calculated torque [kNm]'] = df[working_pressure_col] * 0.1 * 3.14159 / 20
-    if advance_rate_col and revolution_col:
-        df['Penetration_Rate'] = df[advance_rate_col] / df[revolution_col]
-    return df
+    working_pressure_cols = [col for col in df.columns if any(kw in col.lower() for kw in working_pressure_keywords)]
+    revolution_cols = [col for col in df.columns if any(kw in col.lower() for kw in revolution_keywords)]
+    advance_rate_cols = [col for col in df.columns if any(kw in col.lower() for kw in advance_rate_keywords)]
+
+    return working_pressure_cols, revolution_cols, advance_rate_cols
+
+# Helper function to suggest column based on keywords
+def suggest_column(df, keywords):
+    for col in df.columns:
+        if any(kw in col.lower() for kw in keywords):
+            return col
+    return None
 
 # Streamlit app
 def main():
@@ -413,12 +417,29 @@ def main():
 
         if df is not None:
             # Identify special columns
-            working_pressure_cols, advance_rate_cols = identify_special_columns(df)
+            working_pressure_cols, revolution_cols, advance_rate_cols = identify_special_columns(df)
 
-            # Let user select working pressure and advance rate columns
-            working_pressure_col = st.sidebar.selectbox("Select Working Pressure Column", ['None'] + working_pressure_cols)
-            advance_rate_col = st.sidebar.selectbox("Select Advance Rate Column", ['None'] + advance_rate_cols)
-            revolution_col = st.sidebar.selectbox("Select Revolution Column", ['None'] + list(df.columns))
+            # Suggest columns based on keywords
+            suggested_working_pressure = suggest_column(df, ['working pressure', 'arbeitsdruck', 'pressure', 'druck', 'arbdr', 'sr_arbdr','SR_Arbdr'])
+            suggested_revolution = suggest_column(df, ['revolution', 'drehzahl', 'rpm', 'drehz', 'sr_drehz','SR_Drehz'])
+            suggested_advance_rate = suggest_column(df, ['advance rate', 'vortrieb', 'vorschub', 'penetration rate'])
+
+            # Let user select working pressure, revolution, and advance rate columns
+            working_pressure_col = st.sidebar.selectbox(
+                "Select Working Pressure Column", 
+                ['None'] + working_pressure_cols,
+                index=working_pressure_cols.index(suggested_working_pressure) + 1 if suggested_working_pressure else 0
+            )
+            revolution_col = st.sidebar.selectbox(
+                "Select Revolution Column", 
+                ['None'] + revolution_cols,
+                index=revolution_cols.index(suggested_revolution) + 1 if suggested_revolution else 0
+            )
+            advance_rate_col = st.sidebar.selectbox(
+                "Select Advance Rate Column", 
+                ['None'] + advance_rate_cols,
+                index=advance_rate_cols.index(suggested_advance_rate) + 1 if suggested_advance_rate else 0
+            )
 
             # Calculate derived features if possible
             if working_pressure_col != 'None' or (advance_rate_col != 'None' and revolution_col != 'None'):
