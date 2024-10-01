@@ -1,11 +1,4 @@
 import streamlit as st
-
-# Set page config at the very beginning
-st.set_page_config(
-    page_title="Herrenknecht Hard Rock Data Analysis App",
-    page_icon="https://github.com/kilickursat/AVNanalyzer/blob/main/Herrenknecht_logo.svg-1024x695.png?raw=true"
-)
-
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
@@ -15,6 +8,12 @@ from scipy.interpolate import griddata
 from scipy import stats
 import matplotlib.pyplot as plt
 import base64
+
+# Set page config at the very beginning
+st.set_page_config(
+    page_title="Herrenknecht Hard Rock Data Analysis App",
+    page_icon="https://github.com/kilickursat/AVNanalyzer/blob/main/Herrenknecht_logo.svg-1024x695.png?raw=true"
+)
 
 # Helper function to clean numeric columns
 def clean_numeric_column(df, column_name):
@@ -54,23 +53,20 @@ def preprocess_rock_strength_data(df):
     pivoted.rename(columns={'UCS': 'UCS (MPa)', 'BTS': 'BTS (MPa)', 'PLT': 'PLT (MPa)'}, inplace=True)
     return pivoted
 
-# Function to create comparison chart for machine parameters vs rock strength
-def create_rock_strength_comparison_chart(machine_df, rock_df, rock_type):
+# Updated function to create comparison chart for machine parameters vs rock strength
+def create_rock_strength_comparison_chart(machine_df, rock_df, rock_type, selected_features):
     rock_df = rock_df[rock_df.index == rock_type]
     if rock_df.empty:
         st.error(f"No data available for {rock_type} rock type.")
         return
 
-    avg_advance_rate = machine_df['Advance rate (mm/min)'].mean()
-    avg_penetration_rate = machine_df['Penetration_Rate'].mean()
-    avg_torque = machine_df['Calculated torque [kNm]'].mean()
-    avg_pressure = machine_df['Working pressure [bar]'].mean()
+    avg_values = machine_df[selected_features].mean()
 
-    parameters = ['Advance Rate\n(mm/min)', 'Penetration Rate\n(mm/rev)', 'Torque\n(kNm)', 'Working Pressure\n(bar)']
-    machine_values = [avg_advance_rate, avg_penetration_rate, avg_torque, avg_pressure]
-    ucs_values = [rock_df['UCS (MPa)'].iloc[0]] * 4
-    bts_values = [rock_df['BTS (MPa)'].iloc[0]] * 4
-    plt_values = [rock_df['PLT (MPa)'].iloc[0]] * 4
+    parameters = selected_features
+    machine_values = avg_values.values
+    ucs_values = [rock_df['UCS (MPa)'].iloc[0]] * len(selected_features)
+    bts_values = [rock_df['BTS (MPa)'].iloc[0]] * len(selected_features)
+    plt_values = [rock_df['PLT (MPa)'].iloc[0]] * len(selected_features)
 
     fig, axs = plt.subplots(2, 2, figsize=(16, 16), dpi=600)
     fig.suptitle(f"Machine Parameters vs {rock_type} Rock Strength", fontsize=20, fontweight='bold')
@@ -87,8 +83,7 @@ def create_rock_strength_comparison_chart(machine_df, rock_df, rock_type):
         ax.set_title(f'{rock_type} - {param}', fontsize=16, fontweight='bold')
         ax.set_xticks(x)
 
-        machine_param_name = param.split('\n')[0]
-        ax.set_xticklabels([machine_param_name, 'UCS', 'BTS', 'PLT'], fontsize=12, fontweight='bold')
+        ax.set_xticklabels([param, 'UCS', 'BTS', 'PLT'], fontsize=12, fontweight='bold')
 
         ax.tick_params(axis='y', labelsize=10)
 
@@ -101,31 +96,26 @@ def create_rock_strength_comparison_chart(machine_df, rock_df, rock_type):
 
     st.pyplot(fig)
 
-# Function to visualize correlation heatmap with dynamic input
-def create_correlation_heatmap(df):
-    features = st.multiselect("Select features for correlation heatmap", df.columns, default=[
-        'Revolution [rpm]', 'Thrust force [kN]', 'Chainage', 'Calculated torque [kNm]', 'Penetration_Rate', 'Working pressure [bar]'
-    ])
-    if len(features) < 2:
-        st.warning("Please select at least two features.")
+# Updated function to visualize correlation heatmap with dynamic input
+def create_correlation_heatmap(df, selected_features):
+    if len(selected_features) < 2:
+        st.warning("Please select at least two features for the correlation heatmap.")
         return
     
-    corr_matrix = df[features].corr()
+    corr_matrix = df[selected_features].corr()
     fig = sns.heatmap(corr_matrix, annot=True, cmap='coolwarm', vmin=-1, vmax=1, center=0)
     fig.figure.set_size_inches(12, 10)
     fig.set_title('Correlation Heatmap of Selected Parameters')
     st.pyplot(fig.figure)
 
-def create_statistical_summary(df, round_to=2):
-    features = st.multiselect("Select features for statistical summary", df.columns, default=[
-        'Revolution [rpm]', 'Penetration_Rate', 'Calculated torque [kNm]', 'Thrust force [kN]'
-    ])
-    if not features:
-        st.warning("Please select at least one feature.")
+# Updated function to create statistical summary
+def create_statistical_summary(df, selected_features, round_to=2):
+    if not selected_features:
+        st.warning("Please select at least one feature for the statistical summary.")
         return
 
     summary_dict = {}
-    for feature in features:
+    for feature in selected_features:
         summary_dict[feature] = {
             'count': int(df[feature].count()),
             'mean': round(df[feature].mean(), round_to),
@@ -142,7 +132,7 @@ def create_statistical_summary(df, round_to=2):
 
     summary = pd.DataFrame(summary_dict).transpose()
     
-    # Style the table
+    # Style the table (keeping the existing styling)
     styled_summary = summary.style.set_properties(**{
         'background-color': 'white',
         'color': 'black',
@@ -187,14 +177,11 @@ def create_statistical_summary(df, round_to=2):
 
     # Display the styled table
     st.markdown(final_html, unsafe_allow_html=True)
-    
-# Function to create Features vs Time plot with Plotly subplots
-def create_features_vs_time(df):
-    features = st.multiselect("Select features for Time Series plot", df.columns, default=[
-        'Revolution [rpm]', 'Thrust force [kN]', 'Calculated torque [kNm]', 'Penetration_Rate', 'Working pressure [bar]'
-    ])
-    if not features:
-        st.warning("Please select at least one feature.")
+
+# Updated function to create Features vs Time plot with Plotly subplots
+def create_features_vs_time(df, selected_features):
+    if not selected_features:
+        st.warning("Please select at least one feature for the time series plot.")
         return
     
     colors = {
@@ -205,16 +192,15 @@ def create_features_vs_time(df):
         'Thrust force [kN]': '#6495ed' # cornflowerblue
     }
 
-    fig = make_subplots(rows=len(features), cols=1, shared_xaxes=True, subplot_titles=features)
-    for i, feature in enumerate(features, start=1):
+    fig = make_subplots(rows=len(selected_features), cols=1, shared_xaxes=True, subplot_titles=selected_features)
+    for i, feature in enumerate(selected_features, start=1):
         fig.add_trace(go.Scatter(x=df['Relative time'], y=df[feature], mode='lines', name=feature, line=dict(color=colors.get(feature, '#000000'))), row=i, col=1)
 
-    fig.update_layout(height=300 * len(features), width=1000, title_text='Features vs Time')
+    fig.update_layout(height=300 * len(selected_features), width=1000, title_text='Features vs Time')
     st.plotly_chart(fig)
 
-# Function to create Pressure Distribution Over Time Polar Plot with Plotly (using scatter plots)
-def create_pressure_distribution_polar_plot(df):
-    pressure_column = 'Working pressure [bar]'
+# Updated function to create Pressure Distribution Over Time Polar Plot with Plotly
+def create_pressure_distribution_polar_plot(df, pressure_column):
     time_normalized = np.linspace(0, 360, len(df))  # Normalizing time to 360 degrees
     df[pressure_column] = pd.to_numeric(df[pressure_column], errors='coerce')
 
@@ -262,13 +248,10 @@ def create_pressure_distribution_polar_plot(df):
     )
     st.plotly_chart(fig)
 
-# Function to create Parameters vs Chainage plot with Plotly subplots
-def create_parameters_vs_chainage(df):
-    features = st.multiselect("Select features for Chainage plot", df.columns, default=[
-        'Revolution [rpm]', 'Thrust force [kN]', 'Calculated torque [kNm]', 'Penetration_Rate'
-    ])
-    if not features:
-        st.warning("Please select at least one feature.")
+# Updated function to create Parameters vs Chainage plot with Plotly subplots
+def create_parameters_vs_chainage(df, selected_features):
+    if not selected_features:
+        st.warning("Please select at least one feature for the chainage plot.")
         return
 
     df = df.sort_values(by='Chainage')  # Sort the data by Chainage
@@ -280,27 +263,24 @@ def create_parameters_vs_chainage(df):
         'Thrust force [kN]': '#6495ed' # cornflowerblue
     }
     
-    fig = make_subplots(rows=len(features), cols=1, shared_xaxes=True, subplot_titles=features)
-    for i, feature in enumerate(features, start=1):
+    fig = make_subplots(rows=len(selected_features), cols=1, shared_xaxes=True, subplot_titles=selected_features)
+    for i, feature in enumerate(selected_features, start=1):
         fig.add_trace(go.Scatter(x=df['Chainage'], y=df[feature], mode='lines', name=feature, line=dict(color=colors.get(feature, '#000000'))), row=i, col=1)
 
-    fig.update_layout(height=300 * len(features), width=1000, title_text='Parameters vs Chainage')
+    fig.update_layout(height=300 * len(selected_features), width=1000, title_text='Parameters vs Chainage')
     st.plotly_chart(fig)
 
-# Function to create multi-axis box plots with additional features
-def create_multi_axis_box_plots(df):
-    features = st.multiselect("Select features for box plots", df.columns, default=[
-        'Revolution [rpm]', 'Penetration_Rate', 'Calculated torque [kNm]', 'Thrust force [kN]'
-    ])
-    if not features:
-        st.warning("Please select at least one feature.")
+# Updated function to create multi-axis box plots with additional features
+def create_multi_axis_box_plots(df, selected_features):
+    if not selected_features:
+        st.warning("Please select at least one feature for the box plots.")
         return
     
     fig = make_subplots(rows=1, cols=1, specs=[[{"secondary_y": True}]])
     colors = ['#0000cd', '#6495ed', '#4b0082', '#ff00ff']  # Corresponding colors
 
-    for i, feature in enumerate(features):
-        if i < len(features) // 2:
+    for i, feature in enumerate(selected_features):
+        if i < len(selected_features) // 2:
             fig.add_trace(go.Box(y=df[feature], name=feature, marker_color=colors[i % len(colors)]), secondary_y=False)
         else:
             fig.add_trace(go.Box(y=df[feature], name=feature, marker_color=colors[i % len(colors)]), secondary_y=True)
@@ -314,20 +294,17 @@ def create_multi_axis_box_plots(df):
     )
     st.plotly_chart(fig)
 
-# Function to create multi-axis violin plots with added customization
-def create_multi_axis_violin_plots(df):
-    features = st.multiselect("Select features for violin plots", df.columns, default=[
-        'Revolution [rpm]', 'Penetration_Rate', 'Calculated torque [kNm]', 'Thrust force [kN]'
-    ])
-    if not features:
-        st.warning("Please select at least one feature.")
+# Updated function to create multi-axis violin plots with added customization
+def create_multi_axis_violin_plots(df, selected_features):
+    if not selected_features:
+        st.warning("Please select at least one feature for the violin plots.")
         return
     
     fig = make_subplots(rows=1, cols=1, specs=[[{"secondary_y": True}]])
     colors = ['#0000cd', '#6495ed', '#4b0082', '#ff00ff']  # Corresponding colors
 
-    for i, feature in enumerate(features):
-        if i < len(features) // 2:
+    for i, feature in enumerate(selected_features):
+        if i < len(selected_features) // 2:
             fig.add_trace(go.Violin(y=df[feature], name=feature, box_visible=True, meanline_visible=True, fillcolor=colors[i % len(colors)]), secondary_y=False)
         else:
             fig.add_trace(go.Violin(y=df[feature], name=feature, box_visible=True, meanline_visible=True, fillcolor=colors[i % len(colors)]), secondary_y=True)
@@ -403,6 +380,21 @@ def add_logo():
         """,
         unsafe_allow_html=True,
     )
+
+# Helper function to identify working pressure and advance rate columns
+def identify_special_columns(df):
+    working_pressure_cols = [col for col in df.columns if any(kw in col.lower() for kw in ['working pressure', 'arbeitsdruck', 'pressure'])]
+    advance_rate_cols = [col for col in df.columns if any(kw in col.lower() for kw in ['advance rate', 'vortrieb', 'vorschub'])]
+    return working_pressure_cols, advance_rate_cols
+
+# Helper function to calculate torque and penetration rate
+def calculate_derived_features(df, working_pressure_col, advance_rate_col, revolution_col):
+    if working_pressure_col:
+        df['Calculated torque [kNm]'] = df[working_pressure_col] * 0.1 * 3.14159 / 20
+    if advance_rate_col and revolution_col:
+        df['Penetration_Rate'] = df[advance_rate_col] / df[revolution_col]
+    return df
+
 # Streamlit app
 def main():
     set_background_color()
@@ -420,29 +412,23 @@ def main():
         df = load_data(uploaded_file)
 
         if df is not None:
-            # Preprocess and clean the data
-            if uploaded_file.name.endswith('.csv'):
-                # Assuming specific column names as per the provided code
-                df = df.rename(columns={
-                    df.columns[13]: 'Arbeitsdruck',
-                    df.columns[7]: 'Drehzahl',
-                    df.columns[30]: 'Advance rate (mm/min)',
-                    df.columns[17]: 'Thrust force [kN]',
-                    df.columns[27]: 'Chainage',
-                    df.columns[2]: 'Relative time',
-                    df.columns[28]: 'Weg VTP [mm]',
-                    'AzV.V13_SR_Pos_Grad | DB    60.DBD   236': 'SR Position [Grad]',
-                    'AzV.V13_SR_ArbDr_Z | DB    60.DBD    26': 'Working pressure [bar]',
-                    'AzV.V13_SR_Drehz_nach_Abgl_Z | DB    60.DBD    30': 'Revolution [rpm]'
-                })
+            # Identify special columns
+            working_pressure_cols, advance_rate_cols = identify_special_columns(df)
 
-                numeric_columns = ['Working pressure [bar]', 'Revolution [rpm]', 'Thrust force [kN]', 'Chainage', 'Advance rate (mm/min)', 'Weg VTP [mm]']
-                for col in numeric_columns:
-                    df = clean_numeric_column(df, col)
+            # Let user select working pressure and advance rate columns
+            working_pressure_col = st.sidebar.selectbox("Select Working Pressure Column", ['None'] + working_pressure_cols)
+            advance_rate_col = st.sidebar.selectbox("Select Advance Rate Column", ['None'] + advance_rate_cols)
+            revolution_col = st.sidebar.selectbox("Select Revolution Column", ['None'] + list(df.columns))
 
-            # Calculate additional parameters
-            df['Calculated torque [kNm]'] = df['Working pressure [bar]'] * 0.1 * 3.14159 / 20
-            df['Penetration_Rate'] = df['Advance rate (mm/min)'] / df['Revolution [rpm]']
+            # Calculate derived features if possible
+            if working_pressure_col != 'None' or (advance_rate_col != 'None' and revolution_col != 'None'):
+                df = calculate_derived_features(df, 
+                                                working_pressure_col if working_pressure_col != 'None' else None,
+                                                advance_rate_col if advance_rate_col != 'None' else None,
+                                                revolution_col if revolution_col != 'None' else None)
+
+            # Let user select features for analysis
+            selected_features = st.sidebar.multiselect("Select features for analysis", df.columns)
 
             # Visualization selection
             options = st.sidebar.radio("Choose visualization", [
@@ -462,22 +448,25 @@ def main():
 
             # Visualization based on user selection
             if options == 'Correlation Heatmap':
-                create_correlation_heatmap(df)
+                create_correlation_heatmap(df, selected_features)
             elif options == 'Statistical Summary':
-                create_statistical_summary(df)
+                create_statistical_summary(df, selected_features)
             elif options == 'Features vs Time':
-                create_features_vs_time(df)
+                create_features_vs_time(df, selected_features)
             elif options == 'Pressure Distribution':
-                create_pressure_distribution_polar_plot(df)
+                if working_pressure_col and working_pressure_col != 'None':
+                    create_pressure_distribution_polar_plot(df, working_pressure_col)
+                else:
+                    st.warning("Please select a valid working pressure column.")
             elif options == 'Parameters vs Chainage':
-                create_parameters_vs_chainage(df)
+                create_parameters_vs_chainage(df, selected_features)
             elif options == 'Box Plots':
-                create_multi_axis_box_plots(df)
+                create_multi_axis_box_plots(df, selected_features)
             elif options == 'Violin Plots':
-                create_multi_axis_violin_plots(df)
+                create_multi_axis_violin_plots(df, selected_features)
             elif options == 'Rock Strength Comparison':
                 if rock_df is not None and 'rock_type' in locals():
-                    create_rock_strength_comparison_chart(df, rock_df, rock_type)
+                    create_rock_strength_comparison_chart(df, rock_df, rock_type, selected_features)
                 else:
                     st.warning("Please upload rock strength data and select a rock type to view the comparison.")
 
