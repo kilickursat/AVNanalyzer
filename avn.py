@@ -404,6 +404,27 @@ def has_time_column(df):
     time_keywords = ['relative time', 'time', 'datum', 'date', 'zeit', 'timestamp']
     return any(col.lower() in time_keywords for col in df.columns)
 
+
+def calculate_derived_features(df, working_pressure_col, advance_rate_col, revolution_col, n1, torque_constant):
+    if working_pressure_col and revolution_col:
+        def calculate_torque_wrapper(row):
+            working_pressure = row[working_pressure_col]
+            current_speed = row[revolution_col]
+            if current_speed < n1:
+                torque = working_pressure * torque_constant
+            else:
+                torque = (n1 / current_speed) * torque_constant * working_pressure
+            return round(torque, 2)
+        
+        df['Calculated torque [kNm]'] = df.apply(calculate_torque_wrapper, axis=1)
+
+    # Calculate penetration rate if advance rate and revolution are available
+    if advance_rate_col and revolution_col:
+        df['Penetration_Rate [mm/rev]'] = df[advance_rate_col] / df[revolution_col]
+
+    return df
+
+
 # Streamlit app
 def main():
     set_background_color()
@@ -425,8 +446,8 @@ def main():
             working_pressure_cols, revolution_cols, advance_rate_cols = identify_special_columns(df)
 
             # Suggest columns based on keywords
-            suggested_working_pressure = suggest_column(df, ['working pressure', 'arbeitsdruck', 'pressure', 'druck', 'arbdr', 'sr_arbdr'])
-            suggested_revolution = suggest_column(df, ['revolution', 'drehzahl', 'rpm', 'drehz', 'sr_drehz'])
+            suggested_working_pressure = suggest_column(df, ['working pressure', 'arbeitsdruck', 'pressure', 'druck', 'arbdr', 'sr_arbdr','SR_Arbdr'])
+            suggested_revolution = suggest_column(df, ['revolution', 'drehzahl', 'rpm', 'drehz', 'sr_drehz', 'SR_Drehz'])
             suggested_advance_rate = suggest_column(df, ['advance rate', 'vortrieb', 'vorschub', 'penetration rate'])
 
             # Let user select working pressure, revolution, and advance rate columns
@@ -446,16 +467,21 @@ def main():
                 index=advance_rate_cols.index(suggested_advance_rate) + 1 if suggested_advance_rate else 0
             )
 
+            # Add input fields for n1 and torque_constant
+            n1 = st.sidebar.number_input("Enter n1 value (revolution 1/min)", min_value=0.0, value=1.0, step=0.1)
+            torque_constant = st.sidebar.number_input("Enter torque constant", min_value=0.0, value=1.0, step=0.1)
+
             # Calculate derived features if possible
             if working_pressure_col != 'None' or (advance_rate_col != 'None' and revolution_col != 'None'):
                 df = calculate_derived_features(df, 
                                                 working_pressure_col if working_pressure_col != 'None' else None,
                                                 advance_rate_col if advance_rate_col != 'None' else None,
-                                                revolution_col if revolution_col != 'None' else None)
+                                                revolution_col if revolution_col != 'None' else None,
+                                                n1,
+                                                torque_constant)
 
             # Let user select features for analysis
             selected_features = st.sidebar.multiselect("Select features for analysis", df.columns)
-
             # Check for time-related columns
             has_time = has_time_column(df)
 
