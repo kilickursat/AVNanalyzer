@@ -401,7 +401,7 @@ def suggest_column(df, keywords):
 
 # Helper function to check for time-related columns
 def has_time_column(df):
-    time_keywords = ['relative time', 'time', 'datum', 'date', 'zeit', 'timestamp']
+    time_keywords = ['relative time', 'time', 'datum', 'date', 'zeit', 'timestamp', 'Relativzeit','Relative Time']
     return any(col.lower() in time_keywords for col in df.columns)
 
 
