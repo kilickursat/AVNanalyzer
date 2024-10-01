@@ -399,6 +399,11 @@ def suggest_column(df, keywords):
             return col
     return None
 
+# Helper function to check for time-related columns
+def has_time_column(df):
+    time_keywords = ['relative time', 'time', 'datum', 'date', 'zeit', 'timestamp']
+    return any(col.lower() in time_keywords for col in df.columns)
+
 # Streamlit app
 def main():
     set_background_color()
@@ -420,8 +425,8 @@ def main():
             working_pressure_cols, revolution_cols, advance_rate_cols = identify_special_columns(df)
 
             # Suggest columns based on keywords
-            suggested_working_pressure = suggest_column(df, ['working pressure', 'arbeitsdruck', 'pressure', 'druck', 'arbdr', 'sr_arbdr','SR_Arbdr'])
-            suggested_revolution = suggest_column(df, ['revolution', 'drehzahl', 'rpm', 'drehz', 'sr_drehz','SR_Drehz'])
+            suggested_working_pressure = suggest_column(df, ['working pressure', 'arbeitsdruck', 'pressure', 'druck', 'arbdr', 'sr_arbdr'])
+            suggested_revolution = suggest_column(df, ['revolution', 'drehzahl', 'rpm', 'drehz', 'sr_drehz'])
             suggested_advance_rate = suggest_column(df, ['advance rate', 'vortrieb', 'vorschub', 'penetration rate'])
 
             # Let user select working pressure, revolution, and advance rate columns
@@ -451,13 +456,19 @@ def main():
             # Let user select features for analysis
             selected_features = st.sidebar.multiselect("Select features for analysis", df.columns)
 
+            # Check for time-related columns
+            has_time = has_time_column(df)
+
             # Visualization selection
-            options = st.sidebar.radio("Choose visualization", [
-                'Correlation Heatmap', 'Statistical Summary', 
-                'Features vs Time', 'Pressure Distribution',
-                'Parameters vs Chainage', 'Box Plots', 
-                'Violin Plots', 'Rock Strength Comparison'
-            ])
+            options = ['Correlation Heatmap', 'Statistical Summary', 'Parameters vs Chainage', 'Box Plots', 'Violin Plots']
+            
+            if has_time:
+                options.extend(['Features vs Time', 'Pressure Distribution'])
+            
+            if rock_strength_file:
+                options.append('Rock Strength Comparison')
+
+            selected_option = st.sidebar.radio("Choose visualization", options)
 
             # Rock strength data processing
             rock_df = None
@@ -468,24 +479,24 @@ def main():
                     rock_type = st.sidebar.selectbox("Select Rock Type", rock_df.index)
 
             # Visualization based on user selection
-            if options == 'Correlation Heatmap':
+            if selected_option == 'Correlation Heatmap':
                 create_correlation_heatmap(df, selected_features)
-            elif options == 'Statistical Summary':
+            elif selected_option == 'Statistical Summary':
                 create_statistical_summary(df, selected_features)
-            elif options == 'Features vs Time':
+            elif selected_option == 'Features vs Time' and has_time:
                 create_features_vs_time(df, selected_features)
-            elif options == 'Pressure Distribution':
+            elif selected_option == 'Pressure Distribution' and has_time:
                 if working_pressure_col and working_pressure_col != 'None':
                     create_pressure_distribution_polar_plot(df, working_pressure_col)
                 else:
                     st.warning("Please select a valid working pressure column.")
-            elif options == 'Parameters vs Chainage':
+            elif selected_option == 'Parameters vs Chainage':
                 create_parameters_vs_chainage(df, selected_features)
-            elif options == 'Box Plots':
+            elif selected_option == 'Box Plots':
                 create_multi_axis_box_plots(df, selected_features)
-            elif options == 'Violin Plots':
+            elif selected_option == 'Violin Plots':
                 create_multi_axis_violin_plots(df, selected_features)
-            elif options == 'Rock Strength Comparison':
+            elif selected_option == 'Rock Strength Comparison':
                 if rock_df is not None and 'rock_type' in locals():
                     create_rock_strength_comparison_chart(df, rock_df, rock_type, selected_features)
                 else:
