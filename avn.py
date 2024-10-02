@@ -545,7 +545,13 @@ def main():
             time_column = get_time_column(df)
 
             # Visualization selection
-            options = ['Correlation Heatmap', 'Statistical Summary', 'Parameters vs Chainage', 'Box Plots', 'Violin Plots']
+                        # Visualization selection
+            options = st.sidebar.radio("Choose visualization", [
+                'Correlation Heatmap', 'Statistical Summary', 
+                'Features vs Time', 'Pressure Distribution',
+                'Parameters vs Chainage', 'Box Plots', 
+                'Violin Plots', 'Rock Strength Comparison'
+            ])
             
             if time_column:
                 options.extend(['Features vs Time', 'Pressure Distribution'])
