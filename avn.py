@@ -471,43 +471,19 @@ def main():
     st.sidebar.header("Data Upload & Analysis")
     
     uploaded_file = st.sidebar.file_uploader("Machine Data (CSV/Excel)", type=['csv', 'xlsx'])
-    rock_strength_file = st.sidebar.file_uploader("Rock Strength Data (Excel)", type=['xlsx'])
+    rock_strength_file = st.sidebar.file_uploader("Rock Strength Data (CSV/Excel)", type=['csv', 'xlsx'])
 
     if uploaded_file is not None:
         df = load_data(uploaded_file)
 
         if df is not None:
-            # Time-Related Data Detection
-            time_column = get_time_column(df)
-            if time_column:
-                st.subheader("Feature vs Time Plot")
-                selected_features = st.multiselect("Select features for time plot", df.columns)
-                if selected_features:
-                    create_features_vs_time(df, selected_features, time_column)
-            else:
-                st.warning("No time domain column available in the uploaded data.")
-
-            # Distance Feature Selection
-            distance_columns = get_distance_columns(df)
-            if distance_columns:
-                st.subheader("Distance vs Features Plot")
-                selected_distance = st.selectbox("Select distance feature", distance_columns)
-                selected_features = st.multiselect("Select features for distance plot", df.columns)
-                if selected_features:
-                    create_parameters_vs_chainage(df, selected_features, selected_distance)
-            else:
-                st.warning("No distance-related columns found in the dataset.")
-
-            # Thrust Force vs Penetration/Advance Rate Plot
-            st.subheader("Thrust Force Relationships")
-            create_thrust_force_plots(df)
             # Identify special columns
             working_pressure_cols, revolution_cols, advance_rate_cols = identify_special_columns(df)
 
             # Suggest columns based on keywords
             suggested_working_pressure = suggest_column(df, ['working pressure', 'arbeitsdruck', 'pressure', 'druck', 'arbdr', 'sr_arbdr','SR_Arbdr'])
             suggested_revolution = suggest_column(df, ['revolution', 'drehzahl', 'rpm', 'drehz', 'sr_drehz', 'SR_Drehz'])
-            suggested_advance_rate = suggest_column(df, ['advance rate', 'vortrieb', 'vorschub', 'penetration rate'])
+            suggested_advance_rate = suggest_column(df, ['advance rate', 'vortrieb', 'vorschub'])
 
             # Let user select working pressure, revolution, and advance rate columns
             working_pressure_col = st.sidebar.selectbox(
@@ -541,17 +517,12 @@ def main():
 
             # Let user select features for analysis
             selected_features = st.sidebar.multiselect("Select features for analysis", df.columns)
+
             # Check for time-related columns
             time_column = get_time_column(df)
 
             # Visualization selection
-                        # Visualization selection
-            options = st.sidebar.radio("Choose visualization", [
-                'Correlation Heatmap', 'Statistical Summary', 
-                'Features vs Time', 'Pressure Distribution',
-                'Parameters vs Chainage', 'Box Plots', 
-                'Violin Plots', 'Rock Strength Comparison'
-            ])
+            options = ['Correlation Heatmap', 'Statistical Summary', 'Parameters vs Chainage', 'Box Plots', 'Violin Plots']
             
             if time_column:
                 options.extend(['Features vs Time', 'Pressure Distribution'])
@@ -578,11 +549,16 @@ def main():
                 create_features_vs_time(df, selected_features, time_column)
             elif selected_option == 'Pressure Distribution' and time_column:
                 if working_pressure_col and working_pressure_col != 'None':
-                    create_pressure_distribution_polar_plot(df, working_pressure_col)
+                    create_pressure_distribution_polar_plot(df, working_pressure_col, time_column)
                 else:
                     st.warning("Please select a valid working pressure column.")
             elif selected_option == 'Parameters vs Chainage':
-                create_parameters_vs_chainage(df, selected_features)
+                distance_columns = get_distance_columns(df)
+                if distance_columns:
+                    selected_distance = st.selectbox("Select distance feature", distance_columns)
+                    create_parameters_vs_chainage(df, selected_features, selected_distance)
+                else:
+                    st.warning("No distance-related columns found in the dataset.")
             elif selected_option == 'Box Plots':
                 create_multi_axis_box_plots(df, selected_features)
             elif selected_option == 'Violin Plots':
