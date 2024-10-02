@@ -199,14 +199,16 @@ def create_features_vs_time(df, selected_features, time_column):
     st.plotly_chart(fig)
 
 # Updated function to create Pressure Distribution Over Time Polar Plot with Plotly
-def create_pressure_distribution_polar_plot(df, pressure_column):
-    time_normalized = np.linspace(0, 360, len(df))  # Normalizing time to 360 degrees
+def create_pressure_distribution_polar_plot(df, pressure_column, time_column):
     df[pressure_column] = pd.to_numeric(df[pressure_column], errors='coerce')
+    
+    # Normalize time to 360 degrees
+    df['normalized_time'] = (df[time_column] - df[time_column].min()) / (df[time_column].max() - df[time_column].min()) * 360
 
     fig = go.Figure()
     fig.add_trace(go.Scatterpolar(
         r=df[pressure_column],
-        theta=time_normalized,
+        theta=df['normalized_time'],
         mode='markers',
         marker=dict(color='blue', size=5),
         name='Pressure'
@@ -228,14 +230,9 @@ def create_pressure_distribution_polar_plot(df, pressure_column):
                 tickfont=dict(size=10)
             ),
             angularaxis=dict(
-                tickmode='linear',
-                tick0=0,
-                dtick=45,
-                showline=False,
-                showgrid=True,
-                gridcolor='lightgrey',
-                tickvals=[0, 45, 90, 135, 180, 225, 270, 315, 360],
-                ticktext=['0°', '45°', '90°', '135°', '180°', '225°', '270°', '315°', '360°'],
+                tickmode='array',
+                tickvals=[0, 90, 180, 270],
+                ticktext=['0°', '90°', '180°', '270°'],
                 direction='clockwise',
                 rotation=90
             )
