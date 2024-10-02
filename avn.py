@@ -480,7 +480,7 @@ def main():
             # Suggest columns based on keywords
             suggested_working_pressure = suggest_column(df, ['working pressure', 'arbeitsdruck', 'pressure', 'druck', 'arbdr', 'sr_arbdr','SR_Arbdr'])
             suggested_revolution = suggest_column(df, ['revolution', 'drehzahl', 'rpm', 'drehz', 'sr_drehz', 'SR_Drehz'])
-            suggested_advance_rate = suggest_column(df, ['advance rate', 'vortrieb', 'vorschub'])
+            suggested_advance_rate = suggest_column(df, ['advance rate', 'vortrieb', 'vorschub','VTgeschw','geschw'])
 
             # Let user select working pressure, revolution, and advance rate columns
             working_pressure_col = st.sidebar.selectbox(
