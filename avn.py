@@ -469,6 +469,7 @@ def main():
         df = load_data(uploaded_file)
 
         if df is not None:
+            st.sidebar.write("Debug: Available columns", df.columns.tolist())
             # Identify special columns
             working_pressure_cols, revolution_cols, advance_rate_cols = identify_special_columns(df)
 
@@ -507,19 +508,28 @@ def main():
                                                 n1,
                                                 torque_constant)
 
+            # Get distance-related columns
+            distance_columns = get_distance_columns(df)
+            
+            # Display identified distance columns for debugging
+            st.sidebar.write("Debug: Identified distance columns", distance_columns)
+
+            # Force distance column selection
+            if not distance_columns:
+                distance_columns = df.columns.tolist()  # Use all columns if no distance columns are detected
+            selected_distance = st.sidebar.selectbox("Select distance/chainage column", distance_columns)
+
             # Let user select features for analysis
             selected_features = st.sidebar.multiselect("Select features for analysis", df.columns)
 
             # Check for time-related columns
             time_column = get_time_column(df)
 
-            distance_columns = get_distance_columns(df)
-
             # Visualization selection
             options = ['Correlation Heatmap', 'Statistical Summary', 'Parameters vs Chainage', 'Box Plots', 'Violin Plots']
 
             if distance_columns:
-                options.extend(['Parameters vs Chainage'])
+                options.append(['Parameters vs Chainage'])
             
             if time_column:
                 options.extend(['Features vs Time', 'Pressure Distribution'])
@@ -549,12 +559,8 @@ def main():
                     create_pressure_distribution_polar_plot(df, working_pressure_col, time_column)
                 else:
                     st.warning("Please select a valid working pressure column.")
-            elif selected_option == 'Parameters vs Chainage':
-                if distance_columns:
-                    selected_distance = st.selectbox("Select distance/chainage feature", distance_columns)
-                    create_parameters_vs_chainage(df, selected_features, selected_distance)
-                else:
-                    st.warning("No distance-related columns found in the dataset.")
+            elif selected_option == 'Parameters vs Distance':
+                create_parameters_vs_chainage(df, selected_features, selected_distance)
             elif selected_option == 'Box Plots':
                 create_multi_axis_box_plots(df, selected_features)
             elif selected_option == 'Violin Plots':
@@ -564,6 +570,7 @@ def main():
                     create_rock_strength_comparison_chart(df, rock_df, rock_type, selected_features)
                 else:
                     st.warning("Please upload rock strength data and select a rock type to view the comparison.")
+
 
             # Add an option to download the processed data
             if st.sidebar.button("Download Processed Data"):
