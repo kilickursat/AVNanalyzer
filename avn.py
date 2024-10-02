@@ -399,11 +399,47 @@ def suggest_column(df, keywords):
             return col
     return None
 
-# Helper function to check for time-related columns
-def has_time_column(df):
-    time_keywords = ['relative time', 'time', 'datum', 'date', 'zeit', 'timestamp', 'Relativzeit','Relative Time']
-    return any(col.lower() in time_keywords for col in df.columns)
+def get_time_column(df):
+    time_keywords = ['relativzeit', 'relative time', 'time', 'datum', 'date', 'zeit', 'timestamp', 'Relative Time', 'Relativzeit']
+    for col in df.columns:
+        if any(keyword in col.lower() for keyword in time_keywords):
+            return col
+    return None
 
+
+def get_distance_columns(df):
+    distance_keywords = ['distance', 'length', 'travel', 'chainage']
+    return [col for col in df.columns if any(keyword in col.lower() for keyword in distance_keywords)]
+
+
+def create_thrust_force_plots(df):
+    thrust_force_col = suggest_column(df, ['thrust force', 'vorschubkraft', 'kraft','Kraft','Kraft_max','GesamtKraft','GesamKraft_STZ','GesamKraft_VTP'])
+    penetration_rate_col = suggest_column(df, ['penetration rate', 'penetrationsrate', 'penetration rate [mm/rev]', 'Penetration_Rate [mm/rev]', 'Penetration_Rate[mm/rev]'])
+    advance_rate_col = suggest_column(df, ['advance rate', 'vortriebsgeschwindigkeit', 'vortrieb','VTP_Weg','Weg'])
+
+    if not thrust_force_col:
+        st.warning("Thrust force column not found in the dataset.")
+        return
+
+    fig = make_subplots(rows=2, cols=1, subplot_titles=("Thrust Force vs Penetration Rate", "Thrust Force vs Advance Rate"))
+
+    if penetration_rate_col:
+        fig.add_trace(go.Scatter(x=df[thrust_force_col], y=df[penetration_rate_col], mode='markers', name='Penetration Rate'), row=1, col=1)
+    else:
+        st.warning("Penetration rate column not found in the dataset.")
+
+    if advance_rate_col:
+        fig.add_trace(go.Scatter(x=df[thrust_force_col], y=df[advance_rate_col], mode='markers', name='Advance Rate'), row=2, col=1)
+    else:
+        st.warning("Advance rate column not found in the dataset.")
+
+    fig.update_layout(height=800, width=800, title_text="Thrust Force Relationships")
+    fig.update_xaxes(title_text="Thrust Force", row=1, col=1)
+    fig.update_xaxes(title_text="Thrust Force", row=2, col=1)
+    fig.update_yaxes(title_text="Penetration Rate", row=1, col=1)
+    fig.update_yaxes(title_text="Advance Rate", row=2, col=1)
+
+    st.plotly_chart(fig)
 
 def calculate_derived_features(df, working_pressure_col, advance_rate_col, revolution_col, n1, torque_constant):
     if working_pressure_col and revolution_col:
@@ -442,6 +478,30 @@ def main():
         df = load_data(uploaded_file)
 
         if df is not None:
+            # Time-Related Data Detection
+            time_column = get_time_column(df)
+            if time_column:
+                st.subheader("Feature vs Time Plot")
+                selected_features = st.multiselect("Select features for time plot", df.columns)
+                if selected_features:
+                    create_features_vs_time(df, selected_features, time_column)
+            else:
+                st.warning("No time domain column available in the uploaded data.")
+
+            # Distance Feature Selection
+            distance_columns = get_distance_columns(df)
+            if distance_columns:
+                st.subheader("Distance vs Features Plot")
+                selected_distance = st.selectbox("Select distance feature", distance_columns)
+                selected_features = st.multiselect("Select features for distance plot", df.columns)
+                if selected_features:
+                    create_parameters_vs_chainage(df, selected_features, selected_distance)
+            else:
+                st.warning("No distance-related columns found in the dataset.")
+
+            # Thrust Force vs Penetration/Advance Rate Plot
+            st.subheader("Thrust Force Relationships")
+            create_thrust_force_plots(df)
             # Identify special columns
             working_pressure_cols, revolution_cols, advance_rate_cols = identify_special_columns(df)
 
