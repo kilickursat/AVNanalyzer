@@ -178,23 +178,22 @@ def create_statistical_summary(df, selected_features, round_to=2):
     # Display the styled table
     st.markdown(final_html, unsafe_allow_html=True)
 
-# Updated function to create Features vs Time plot with Plotly subplots
-def create_features_vs_time(df, selected_features):
+def create_features_vs_time(df, selected_features, time_column):
     if not selected_features:
         st.warning("Please select at least one feature for the time series plot.")
         return
     
     colors = {
-        'Penetration_Rate': '#98fb98', # palegreen
-        'Calculated torque [kNm]': '#4b0082', # indigo
-        'Working pressure [bar]': '#ff00ff', # magenta
-        'Revolution [rpm]': '#0000cd', # mediumblue
-        'Thrust force [kN]': '#6495ed' # cornflowerblue
+        'Penetration_Rate': '#98fb98',
+        'Calculated torque [kNm]': '#4b0082',
+        'Working pressure [bar]': '#ff00ff',
+        'Revolution [rpm]': '#0000cd',
+        'Thrust force [kN]': '#6495ed'
     }
 
     fig = make_subplots(rows=len(selected_features), cols=1, shared_xaxes=True, subplot_titles=selected_features)
     for i, feature in enumerate(selected_features, start=1):
-        fig.add_trace(go.Scatter(x=df['Relative time'], y=df[feature], mode='lines', name=feature, line=dict(color=colors.get(feature, '#000000'))), row=i, col=1)
+        fig.add_trace(go.Scatter(x=df[time_column], y=df[feature], mode='lines', name=feature, line=dict(color=colors.get(feature, '#000000'))), row=i, col=1)
 
     fig.update_layout(height=300 * len(selected_features), width=1000, title_text='Features vs Time')
     st.plotly_chart(fig)
@@ -570,7 +569,7 @@ def main():
             elif selected_option == 'Statistical Summary':
                 create_statistical_summary(df, selected_features)
             elif selected_option == 'Features vs Time' and time_column:
-                create_features_vs_time(df, selected_features)
+                create_features_vs_time(df, selected_features, time_column)
             elif selected_option == 'Pressure Distribution' and time_column:
                 if working_pressure_col and working_pressure_col != 'None':
                     create_pressure_distribution_polar_plot(df, working_pressure_col)
