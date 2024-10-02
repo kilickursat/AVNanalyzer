@@ -528,8 +528,7 @@ def main():
             # Visualization selection
             options = ['Correlation Heatmap', 'Statistical Summary', 'Parameters vs Chainage', 'Box Plots', 'Violin Plots']
 
-            if distance_columns:
-                options.append(['Parameters vs Chainage'])
+
             
             if time_column:
                 options.extend(['Features vs Time', 'Pressure Distribution'])
