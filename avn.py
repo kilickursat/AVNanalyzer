@@ -183,20 +183,48 @@ def create_features_vs_time(df, selected_features, time_column):
         st.warning("Please select at least one feature for the time series plot.")
         return
     
-    colors = {
-        'Penetration_Rate': '#98fb98',
-        'Calculated torque [kNm]': '#4b0082',
-        'Working pressure [bar]': '#ff00ff',
-        'Revolution [rpm]': '#0000cd',
-        'Thrust force [kN]': '#6495ed'
-    }
-
-    fig = make_subplots(rows=len(selected_features), cols=1, shared_xaxes=True, subplot_titles=selected_features)
+    colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEEAD', '#D4A5A5', 
+              '#9B6B6B', '#E9967A', '#4682B4', '#6B8E23']  # Expanded color palette
+    
+    fig = make_subplots(rows=len(selected_features), cols=1, 
+                        shared_xaxes=True, 
+                        subplot_titles=selected_features,
+                        vertical_spacing=0.05)  # Reduce spacing between subplots
+    
     for i, feature in enumerate(selected_features, start=1):
-        fig.add_trace(go.Scatter(x=df[time_column], y=df[feature], mode='lines', name=feature, line=dict(color=colors.get(feature, '#000000'))), row=i, col=1)
+        fig.add_trace(
+            go.Scatter(
+                x=df[time_column], 
+                y=df[feature], 
+                mode='lines', 
+                name=feature, 
+                line=dict(color=colors[i % len(colors)], width=2)
+            ), 
+            row=i, 
+            col=1
+        )
+        
+        # Update y-axis titles
+        fig.update_yaxes(title_text=feature, row=i, col=1)
+    
+    # Update layout with larger dimensions and better spacing
+    fig.update_layout(
+        height=400 * len(selected_features),  # Increased height per subplot
+        width=1200,  # Increased overall width
+        title_text='Features vs Time',
+        showlegend=True,
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1
+        ),
+        margin=dict(t=100, l=100, r=50, b=50)  # Adjusted margins
+    )
+    
+    st.plotly_chart(fig, use_container_width=True)
 
-    fig.update_layout(height=300 * len(selected_features), width=1000, title_text='Features vs Time')
-    st.plotly_chart(fig)
 
 # Updated function to create Pressure Distribution Over Time Polar Plot with Plotly
 def create_pressure_distribution_polar_plot(df, pressure_column, time_column):
@@ -249,18 +277,59 @@ def create_parameters_vs_chainage(df, selected_features, chainage_column):
         st.warning("Please select at least one feature for the chainage plot.")
         return
 
-    df = df.sort_values(by=chainage_column)  # Sort the data by selected Chainage column
-    colors = ['#a8e6cf', '#dcedc1', '#ffd3b6', '#ffaaa5']
+    # Ensure the chainage column exists
+    if chainage_column not in df.columns:
+        st.error(f"Chainage column '{chainage_column}' not found in the dataset.")
+        return
+
+    # Sort the data by chainage column
+    df = df.sort_values(by=chainage_column)
     
-    fig = make_subplots(rows=len(selected_features), cols=1, shared_xaxes=True, subplot_titles=selected_features)
+    colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEEAD', '#D4A5A5', 
+              '#9B6B6B', '#E9967A', '#4682B4', '#6B8E23']  # Expanded color palette
+    
+    fig = make_subplots(rows=len(selected_features), cols=1, 
+                        shared_xaxes=True, 
+                        subplot_titles=selected_features,
+                        vertical_spacing=0.05)  # Reduce spacing between subplots
+    
     for i, feature in enumerate(selected_features, start=1):
-        fig.add_trace(go.Scatter(x=df[chainage_column], y=df[feature], mode='lines', name=feature, 
-                                 line=dict(color=colors[i % len(colors)])), row=i, col=1)
-
-    fig.update_layout(height=300 * len(selected_features), width=1000, title_text=f'Parameters vs {chainage_column}')
+        fig.add_trace(
+            go.Scatter(
+                x=df[chainage_column], 
+                y=df[feature], 
+                mode='lines', 
+                name=feature, 
+                line=dict(color=colors[i % len(colors)], width=2)
+            ), 
+            row=i, 
+            col=1
+        )
+        
+        # Update y-axis titles
+        fig.update_yaxes(title_text=feature, row=i, col=1)
+    
+    # Update layout with larger dimensions and better spacing
+    fig.update_layout(
+        height=400 * len(selected_features),  # Increased height per subplot
+        width=1200,  # Increased overall width
+        title_text=f'Parameters vs {chainage_column}',
+        showlegend=True,
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1
+        ),
+        margin=dict(t=100, l=100, r=50, b=50)  # Adjusted margins
+    )
+    
+    # Update x-axis title only for the bottom subplot
     fig.update_xaxes(title_text=chainage_column, row=len(selected_features), col=1)
-    st.plotly_chart(fig)
-
+    
+    st.plotly_chart(fig, use_container_width=True)
+    
 # Function to get distance-related columns
 def get_distance_columns(df):
     distance_keywords = ['distance', 'length', 'travel', 'chainage', 'Tunnellänge Neu', 'Tunnellänge','Weg_mm_Z','VTP_Weg']
@@ -469,7 +538,6 @@ def main():
         df = load_data(uploaded_file)
 
         if df is not None:
-            st.sidebar.write("Debug: Available columns", df.columns.tolist())
             # Identify special columns
             working_pressure_cols, revolution_cols, advance_rate_cols = identify_special_columns(df)
 
@@ -502,18 +570,15 @@ def main():
             # Calculate derived features if possible
             if working_pressure_col != 'None' or (advance_rate_col != 'None' and revolution_col != 'None'):
                 df = calculate_derived_features(df, 
-                                                working_pressure_col if working_pressure_col != 'None' else None,
-                                                advance_rate_col if advance_rate_col != 'None' else None,
-                                                revolution_col if revolution_col != 'None' else None,
-                                                n1,
-                                                torque_constant)
+                                             working_pressure_col if working_pressure_col != 'None' else None,
+                                             advance_rate_col if advance_rate_col != 'None' else None,
+                                             revolution_col if revolution_col != 'None' else None,
+                                             n1,
+                                             torque_constant)
 
             # Get distance-related columns
             distance_columns = get_distance_columns(df)
             
-            # Display identified distance columns for debugging
-            st.sidebar.write("Debug: Identified distance columns", distance_columns)
-
             # Force distance column selection
             if not distance_columns:
                 distance_columns = df.columns.tolist()  # Use all columns if no distance columns are detected
@@ -527,8 +592,6 @@ def main():
 
             # Visualization selection
             options = ['Correlation Heatmap', 'Statistical Summary', 'Parameters vs Chainage', 'Box Plots', 'Violin Plots']
-
-
             
             if time_column:
                 options.extend(['Features vs Time', 'Pressure Distribution'])
@@ -546,38 +609,44 @@ def main():
                     rock_df = preprocess_rock_strength_data(rock_strength_data)
                     rock_type = st.sidebar.selectbox("Select Rock Type", rock_df.index)
 
-            # Visualization based on user selection
-            if selected_option == 'Correlation Heatmap':
-                create_correlation_heatmap(df, selected_features)
-            elif selected_option == 'Statistical Summary':
-                create_statistical_summary(df, selected_features)
-            elif selected_option == 'Features vs Time' and time_column:
-                create_features_vs_time(df, selected_features, time_column)
-            elif selected_option == 'Pressure Distribution' and time_column:
-                if working_pressure_col and working_pressure_col != 'None':
-                    create_pressure_distribution_polar_plot(df, working_pressure_col, time_column)
-                else:
-                    st.warning("Please select a valid working pressure column.")
-            elif selected_option == 'Parameters vs Distance':
-                create_parameters_vs_chainage(df, selected_features, selected_distance)
-            elif selected_option == 'Box Plots':
-                create_multi_axis_box_plots(df, selected_features)
-            elif selected_option == 'Violin Plots':
-                create_multi_axis_violin_plots(df, selected_features)
-            elif selected_option == 'Rock Strength Comparison':
-                if rock_df is not None and 'rock_type' in locals():
-                    create_rock_strength_comparison_chart(df, rock_df, rock_type, selected_features)
-                else:
-                    st.warning("Please upload rock strength data and select a rock type to view the comparison.")
+            # Main content area - Visualization based on user selection
+            st.subheader(f"Visualization: {selected_option}")
+            
+            if not selected_features and selected_option not in ['Pressure Distribution']:
+                st.warning("Please select at least one feature for analysis.")
+            else:
+                if selected_option == 'Correlation Heatmap':
+                    create_correlation_heatmap(df, selected_features)
+                elif selected_option == 'Statistical Summary':
+                    create_statistical_summary(df, selected_features)
+                elif selected_option == 'Features vs Time' and time_column:
+                    create_features_vs_time(df, selected_features, time_column)
+                elif selected_option == 'Pressure Distribution' and time_column:
+                    if working_pressure_col and working_pressure_col != 'None':
+                        create_pressure_distribution_polar_plot(df, working_pressure_col, time_column)
+                    else:
+                        st.warning("Please select a valid working pressure column.")
+                elif selected_option == 'Parameters vs Chainage':
+                    create_parameters_vs_chainage(df, selected_features, selected_distance)
+                elif selected_option == 'Box Plots':
+                    create_multi_axis_box_plots(df, selected_features)
+                elif selected_option == 'Violin Plots':
+                    create_multi_axis_violin_plots(df, selected_features)
+                elif selected_option == 'Rock Strength Comparison':
+                    if rock_df is not None and 'rock_type' in locals():
+                        create_rock_strength_comparison_chart(df, rock_df, rock_type, selected_features)
+                    else:
+                        st.warning("Please upload rock strength data and select a rock type to view the comparison.")
 
-
-            # Add an option to download the processed data
+            # Add download button for processed data
             if st.sidebar.button("Download Processed Data"):
                 csv = df.to_csv(index=False)
                 b64 = base64.b64encode(csv.encode()).decode()
                 href = f'<a href="data:file/csv;base64,{b64}" download="processed_data.csv">Download Processed CSV File</a>'
                 st.sidebar.markdown(href, unsafe_allow_html=True)
 
+        else:
+            st.error("Error loading the data. Please check your file format.")
     else:
         st.info("Please upload a machine data file to begin analysis.")
 
