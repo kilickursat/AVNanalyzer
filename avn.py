@@ -244,27 +244,27 @@ def create_pressure_distribution_polar_plot(df, pressure_column, time_column):
     )
     st.plotly_chart(fig)
 
-# Updated function to create Parameters vs Chainage plot with Plotly subplots
-def create_parameters_vs_chainage(df, selected_features):
+def create_parameters_vs_chainage(df, selected_features, chainage_column):
     if not selected_features:
         st.warning("Please select at least one feature for the chainage plot.")
         return
 
-    df = df.sort_values(by='Chainage')  # Sort the data by Chainage
-
-    colors = {
-        'Penetration_Rate': '#98fb98', # palegreen
-        'Calculated torque [kNm]': '#4b0082', # indigo
-        'Revolution [rpm]': '#0000cd', # mediumblue
-        'Thrust force [kN]': '#6495ed' # cornflowerblue
-    }
+    df = df.sort_values(by=chainage_column)  # Sort the data by selected Chainage column
+    colors = ['#a8e6cf', '#dcedc1', '#ffd3b6', '#ffaaa5']
     
     fig = make_subplots(rows=len(selected_features), cols=1, shared_xaxes=True, subplot_titles=selected_features)
     for i, feature in enumerate(selected_features, start=1):
-        fig.add_trace(go.Scatter(x=df['Chainage'], y=df[feature], mode='lines', name=feature, line=dict(color=colors.get(feature, '#000000'))), row=i, col=1)
+        fig.add_trace(go.Scatter(x=df[chainage_column], y=df[feature], mode='lines', name=feature, 
+                                 line=dict(color=colors[i % len(colors)])), row=i, col=1)
 
-    fig.update_layout(height=300 * len(selected_features), width=1000, title_text='Parameters vs Chainage')
+    fig.update_layout(height=300 * len(selected_features), width=1000, title_text=f'Parameters vs {chainage_column}')
+    fig.update_xaxes(title_text=chainage_column, row=len(selected_features), col=1)
     st.plotly_chart(fig)
+
+# Function to get distance-related columns
+def get_distance_columns(df):
+    distance_keywords = ['distance', 'length', 'travel', 'chainage', 'Tunnellänge Neu', 'Tunnellänge','Weg_mm_Z','VTP_Weg']
+    return [col for col in df.columns if any(keyword in col.lower() for keyword in distance_keywords)]
 
 # Updated function to create multi-axis box plots with additional features
 def create_multi_axis_box_plots(df, selected_features):
@@ -403,11 +403,6 @@ def get_time_column(df):
     return None
 
 
-def get_distance_columns(df):
-    distance_keywords = ['distance', 'length', 'travel', 'chainage']
-    return [col for col in df.columns if any(keyword in col.lower() for keyword in distance_keywords)]
-
-
 def create_thrust_force_plots(df):
     thrust_force_col = suggest_column(df, ['thrust force', 'vorschubkraft', 'kraft','Kraft','Kraft_max','GesamtKraft','GesamKraft_STZ','GesamKraft_VTP'])
     penetration_rate_col = suggest_column(df, ['penetration rate', 'penetrationsrate', 'penetration rate [mm/rev]', 'Penetration_Rate [mm/rev]', 'Penetration_Rate[mm/rev]'])
@@ -518,6 +513,8 @@ def main():
             # Check for time-related columns
             time_column = get_time_column(df)
 
+            distance_columns = get_distance_columns(df)
+
             # Visualization selection
             options = ['Correlation Heatmap', 'Statistical Summary', 'Parameters vs Chainage', 'Box Plots', 'Violin Plots']
             
@@ -550,9 +547,8 @@ def main():
                 else:
                     st.warning("Please select a valid working pressure column.")
             elif selected_option == 'Parameters vs Chainage':
-                distance_columns = get_distance_columns(df)
                 if distance_columns:
-                    selected_distance = st.selectbox("Select distance feature", distance_columns)
+                    selected_distance = st.selectbox("Select distance/chainage feature", distance_columns)
                     create_parameters_vs_chainage(df, selected_features, selected_distance)
                 else:
                     st.warning("No distance-related columns found in the dataset.")
