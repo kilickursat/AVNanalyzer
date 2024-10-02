@@ -543,12 +543,12 @@ def main():
             # Let user select features for analysis
             selected_features = st.sidebar.multiselect("Select features for analysis", df.columns)
             # Check for time-related columns
-            has_time = has_time_column(df)
+            time_column = get_time_column(df)
 
             # Visualization selection
             options = ['Correlation Heatmap', 'Statistical Summary', 'Parameters vs Chainage', 'Box Plots', 'Violin Plots']
             
-            if has_time:
+            if time_column:
                 options.extend(['Features vs Time', 'Pressure Distribution'])
             
             if rock_strength_file:
@@ -569,9 +569,9 @@ def main():
                 create_correlation_heatmap(df, selected_features)
             elif selected_option == 'Statistical Summary':
                 create_statistical_summary(df, selected_features)
-            elif selected_option == 'Features vs Time' and has_time:
+            elif selected_option == 'Features vs Time' and time_column:
                 create_features_vs_time(df, selected_features)
-            elif selected_option == 'Pressure Distribution' and has_time:
+            elif selected_option == 'Pressure Distribution' and time_column:
                 if working_pressure_col and working_pressure_col != 'None':
                     create_pressure_distribution_polar_plot(df, working_pressure_col)
                 else:
