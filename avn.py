@@ -497,7 +497,7 @@ def get_time_column(df):
 def create_thrust_force_plots(df):
     thrust_force_col = suggest_column(df, ['thrust force', 'vorschubkraft', 'kraft','Kraft','Kraft_max','GesamtKraft','GesamKraft_STZ','GesamKraft_VTP'])
     penetration_rate_col = suggest_column(df, ['penetration rate', 'penetrationsrate', 'penetration rate [mm/rev]', 'Penetration_Rate [mm/rev]', 'Penetration_Rate[mm/rev]'])
-    advance_rate_col = suggest_column(df, ['advance rate', 'vortriebsgeschwindigkeit', 'vortrieb','VTP_Weg','Weg'])
+    advance_rate_col = suggest_column(df, ['advance rate', 'vortriebsgeschwindigkeit', 'vortrieb','VTgeschw','Vtgeschw_Z'])
 
     if not thrust_force_col:
         st.warning("Thrust force column not found in the dataset.")
