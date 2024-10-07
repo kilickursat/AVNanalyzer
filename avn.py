@@ -516,56 +516,6 @@ def create_thrust_force_plots(df):
         st.warning("Advance rate column not found in the dataset.")
 
     fig.update_layout(height=800, width=800, title_text="Thrust Force Relationships")
-    fig.update_xaxes(title_text="Thrust Force", row=1, col=1)
-    fig.update_xaxes(title_text="Thrust Force", row=2, col=1)
-    fig.update_yaxes(title_text="Penetration Rate", row=1, col=1)
-    fig.update_yaxes(title_text="Advance Rate", row=2, col=1)
-
-    st.plotly_chart(fig)
-
-def calculate_derived_features(df, working_pressure_col, advance_rate_col, revolution_col, n1, torque_constant):
-    if working_pressure_col and revolution_col:
-        def calculate_torque_wrapper(row):
-            working_pressure = row[working_pressure_col]
-            current_speed = row[revolution_col]
-            if current_speed < n1:
-                torque = working_pressure * torque_constant
-            else:
-                torque = (n1 / current_speed) * torque_constant * working_pressure
-            return round(torque, 2)
-        
-        df['Calculated torque [kNm]'] = df.apply(calculate_torque_wrapper, axis=1)
-
-    # Calculate penetration rate if advance rate and revolution are available
-    if advance_rate_col and revolution_col:
-        df['Penetration_Rate [mm/rev]'] = df[advance_rate_col] / df[revolution_col]
-
-    return df
-
-
-
-def create_thrust_force_plots(df):
-    thrust_force_col = suggest_column(df, ['thrust force', 'vorschubkraft', 'kraft', 'Kraft', 'Kraft_max', 'GesamtKraft', 'GesamKraft_STZ', 'GesamKraft_VTP'])
-    penetration_rate_col = suggest_column(df, ['penetration rate', 'penetrationsrate', 'penetration rate [mm/rev]', 'Penetration_Rate [mm/rev]', 'Penetration_Rate[mm/rev]'])
-    advance_rate_col = suggest_column(df, ['advance rate', 'vortriebsgeschwindigkeit', 'vortrieb', 'VTP_Weg', 'Weg'])
-
-    if not thrust_force_col:
-        st.warning("Thrust force column not found in the dataset.")
-        return
-
-    fig = make_subplots(rows=2, cols=1, subplot_titles=("Thrust Force vs Penetration Rate", "Thrust Force vs Advance Rate"))
-
-    if penetration_rate_col:
-        fig.add_trace(go.Scatter(x=df[thrust_force_col], y=df[penetration_rate_col], mode='markers', name='Penetration Rate'), row=1, col=1)
-    else:
-        st.warning("Penetration rate column not found in the dataset.")
-
-    if advance_rate_col:
-        fig.add_trace(go.Scatter(x=df[thrust_force_col], y=df[advance_rate_col], mode='markers', name='Advance Rate'), row=2, col=1)
-    else:
-        st.warning("Advance rate column not found in the dataset.")
-
-    fig.update_layout(height=800, width=800, title_text="Thrust Force Relationships")
     fig.update_xaxes(title_text="Thrust Force [kN]", row=1, col=1)
     fig.update_xaxes(title_text="Thrust Force [kN]", row=2, col=1)
     fig.update_yaxes(title_text="Penetration Rate [mm/rev]", row=1, col=1)
@@ -574,7 +524,6 @@ def create_thrust_force_plots(df):
     st.plotly_chart(fig)
 
 
-# Streamlit app
 def main():
     set_background_color()
     add_logo()
@@ -644,7 +593,7 @@ def main():
             time_column = get_time_column(df)
 
             # Visualization selection
-            options = ['Correlation Heatmap', 'Statistical Summary', 'Parameters vs Chainage', 'Box Plots', 'Violin Plots','Thrust Force Plots']
+            options = ['Correlation Heatmap', 'Statistical Summary', 'Parameters vs Chainage', 'Box Plots', 'Violin Plots', 'Thrust Force Plots']
             
             if time_column:
                 options.extend(['Features vs Time', 'Pressure Distribution'])
@@ -692,7 +641,7 @@ def main():
                         st.warning("Please upload rock strength data and select a rock type to view the comparison.")
                 elif selected_option == 'Thrust Force Plots':
                     create_thrust_force_plots(df)
-                    
+
             # Add download button for processed data
             if st.sidebar.button("Download Processed Data"):
                 csv = df.to_csv(index=False)
@@ -709,6 +658,3 @@ def main():
     st.markdown("---")
     st.markdown("© 2024 Herrenknecht AG. All rights reserved.")
     st.markdown("Created by Kursat Kilic - Geotechnical Digitalization")
-
-if __name__ == "__main__":
-    main()
