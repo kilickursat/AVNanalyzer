@@ -62,8 +62,19 @@ def create_rock_strength_comparison_chart(machine_df, rock_df, rock_type, select
 
     avg_values = machine_df[selected_features].mean()
 
-    parameters = selected_features
-    machine_values = avg_values.values
+    parameters = []
+    machine_values = []
+    for feature in selected_features:
+        if any(keyword in feature.lower() for keyword in ['advance rate', 'vortrieb', 'vorschub', 'VTgeschw', 'geschw']):
+            parameters.append('Advance rate [mm/min]')
+        elif any(keyword in feature.lower() for keyword in ['revolution', 'drehzahl', 'rpm', 'drehz', 'sr_drehz', 'SR_Drehz']):
+            parameters.append('Revolution [rpm]')
+        elif any(keyword in feature.lower() for keyword in ['working pressure', 'arbeitsdruck', 'pressure', 'druck', 'arbdr', 'sr_arbdr', 'SR_Arbdr']):
+            parameters.append('Working pressure [bar]')
+        else:
+            parameters.append(feature)
+        machine_values.append(avg_values[feature])
+
     ucs_values = [rock_df['UCS (MPa)'].iloc[0]] * len(selected_features)
     bts_values = [rock_df['BTS (MPa)'].iloc[0]] * len(selected_features)
     plt_values = [rock_df['PLT (MPa)'].iloc[0]] * len(selected_features)
@@ -294,12 +305,23 @@ def create_parameters_vs_chainage(df, selected_features, chainage_column):
                         vertical_spacing=0.05)  # Reduce spacing between subplots
     
     for i, feature in enumerate(selected_features, start=1):
+        y_data = df[feature]
+        feature_name = feature
+
+        # Replace sensor names with standardized names
+        if any(keyword in feature.lower() for keyword in ['advance rate', 'vortrieb', 'vorschub', 'VTgeschw', 'geschw']):
+            feature_name = 'Advance rate [mm/min]'
+        elif any(keyword in feature.lower() for keyword in ['revolution', 'drehzahl', 'rpm', 'drehz', 'sr_drehz', 'SR_Drehz']):
+            feature_name = 'Revolution [rpm]'
+        elif any(keyword in feature.lower() for keyword in ['working pressure', 'arbeitsdruck', 'pressure', 'druck', 'arbdr', 'sr_arbdr', 'SR_Arbdr']):
+            feature_name = 'Working pressure [bar]'
+
         fig.add_trace(
             go.Scatter(
                 x=df[chainage_column], 
-                y=df[feature], 
+                y=y_data, 
                 mode='lines', 
-                name=feature, 
+                name=feature_name, 
                 line=dict(color=colors[i % len(colors)], width=2)
             ), 
             row=i, 
@@ -307,7 +329,7 @@ def create_parameters_vs_chainage(df, selected_features, chainage_column):
         )
         
         # Update y-axis titles
-        fig.update_yaxes(title_text=feature, row=i, col=1)
+        fig.update_yaxes(title_text=feature_name, row=i, col=1)
     
     # Update layout with larger dimensions and better spacing
     fig.update_layout(
@@ -521,6 +543,37 @@ def calculate_derived_features(df, working_pressure_col, advance_rate_col, revol
     return df
 
 
+
+def create_thrust_force_plots(df):
+    thrust_force_col = suggest_column(df, ['thrust force', 'vorschubkraft', 'kraft', 'Kraft', 'Kraft_max', 'GesamtKraft', 'GesamKraft_STZ', 'GesamKraft_VTP'])
+    penetration_rate_col = suggest_column(df, ['penetration rate', 'penetrationsrate', 'penetration rate [mm/rev]', 'Penetration_Rate [mm/rev]', 'Penetration_Rate[mm/rev]'])
+    advance_rate_col = suggest_column(df, ['advance rate', 'vortriebsgeschwindigkeit', 'vortrieb', 'VTP_Weg', 'Weg'])
+
+    if not thrust_force_col:
+        st.warning("Thrust force column not found in the dataset.")
+        return
+
+    fig = make_subplots(rows=2, cols=1, subplot_titles=("Thrust Force vs Penetration Rate", "Thrust Force vs Advance Rate"))
+
+    if penetration_rate_col:
+        fig.add_trace(go.Scatter(x=df[thrust_force_col], y=df[penetration_rate_col], mode='markers', name='Penetration Rate'), row=1, col=1)
+    else:
+        st.warning("Penetration rate column not found in the dataset.")
+
+    if advance_rate_col:
+        fig.add_trace(go.Scatter(x=df[thrust_force_col], y=df[advance_rate_col], mode='markers', name='Advance Rate'), row=2, col=1)
+    else:
+        st.warning("Advance rate column not found in the dataset.")
+
+    fig.update_layout(height=800, width=800, title_text="Thrust Force Relationships")
+    fig.update_xaxes(title_text="Thrust Force [kN]", row=1, col=1)
+    fig.update_xaxes(title_text="Thrust Force [kN]", row=2, col=1)
+    fig.update_yaxes(title_text="Penetration Rate [mm/rev]", row=1, col=1)
+    fig.update_yaxes(title_text="Advance Rate [mm/min]", row=2, col=1)
+
+    st.plotly_chart(fig)
+
+
 # Streamlit app
 def main():
     set_background_color()
@@ -591,7 +644,7 @@ def main():
             time_column = get_time_column(df)
 
             # Visualization selection
-            options = ['Correlation Heatmap', 'Statistical Summary', 'Parameters vs Chainage', 'Box Plots', 'Violin Plots']
+            options = ['Correlation Heatmap', 'Statistical Summary', 'Parameters vs Chainage', 'Box Plots', 'Violin Plots','Thrust Force Plots']
             
             if time_column:
                 options.extend(['Features vs Time', 'Pressure Distribution'])
@@ -612,7 +665,7 @@ def main():
             # Main content area - Visualization based on user selection
             st.subheader(f"Visualization: {selected_option}")
             
-            if not selected_features and selected_option not in ['Pressure Distribution']:
+            if not selected_features and selected_option not in ['Pressure Distribution', 'Thrust Force Plots']:
                 st.warning("Please select at least one feature for analysis.")
             else:
                 if selected_option == 'Correlation Heatmap':
@@ -637,7 +690,9 @@ def main():
                         create_rock_strength_comparison_chart(df, rock_df, rock_type, selected_features)
                     else:
                         st.warning("Please upload rock strength data and select a rock type to view the comparison.")
-
+                elif selected_option == 'Thrust Force Plots':
+                    create_thrust_force_plots(df)
+                    
             # Add download button for processed data
             if st.sidebar.button("Download Processed Data"):
                 csv = df.to_csv(index=False)
