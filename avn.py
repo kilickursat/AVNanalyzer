@@ -640,9 +640,9 @@ def main():
                 # Suggest columns based on keywords
                 suggested_working_pressure = suggest_column(df, ['working pressure', 'arbeitsdruck', 'pressure', 'druck', 'arbdr', 'sr_arbdr','sr_arbdr'])
                 suggested_revolution = suggest_column(df, ['revolution', 'drehzahl', 'rpm', 'drehz', 'sr_drehz', 'sr_drehz'])
-                suggested_advance_rate = suggest_column(df, ['advance rate', 'vortrieb', 'vorschub','penetration rate','vtgeschw_z','geschw','geschw_z'])
+                suggested_advance_rate = suggest_column(df, ['advance rate', 'vortrieb', 'vorschub','vtgeschw','geschw'])
 
-                # Let user select working pressure, revolution, and advance rate columns
+                # Let user select working pressure, revolution, and advance rate columns with safe indexing
                 working_pressure_col = safe_selectbox(
                     "Select Working Pressure Column", 
                     ['None'] + working_pressure_cols,
@@ -665,38 +665,29 @@ def main():
 
                 # Calculate derived features if possible
                 if working_pressure_col != 'None' or (advance_rate_col != 'None' and revolution_col != 'None'):
-                    df = calculate_derived_features(
-                        df, 
-                        working_pressure_col,
-                        advance_rate_col,
-                        revolution_col,
-                        n1,
-                        torque_constant
-                    )
-                
+                    df = calculate_derived_features(df, 
+                                                    working_pressure_col,
+                                                    advance_rate_col,
+                                                    revolution_col,
+                                                    n1,
+                                                    torque_constant)
+
                 # Get distance-related columns
                 distance_columns = get_distance_columns(df)
                 
+                # Force distance column selection
                 if not distance_columns:
                     distance_columns = df.columns.tolist()  # Use all columns if no distance columns are detected
                 selected_distance = st.sidebar.selectbox("Select distance/chainage column", distance_columns)
 
                 # Let user select features for analysis
-                feature_options = list(df.columns)
-                selected_features = st.sidebar.multiselect("Select features for analysis", feature_options)
+                selected_features = st.sidebar.multiselect("Select features for analysis", df.columns)
 
                 # Check for time-related columns
                 time_column = get_time_column(df)
 
                 # Visualization selection
-                options = [
-                    'Correlation Heatmap', 
-                    'Statistical Summary', 
-                    'Parameters vs Chainage', 
-                    'Box Plots', 
-                    'Violin Plots', 
-                    'Thrust Force Plots'
-                ]
+                options = ['Correlation Heatmap', 'Statistical Summary', 'Parameters vs Chainage', 'Box Plots', 'Violin Plots', 'Thrust Force Plots']
                 
                 if time_column:
                     options.extend(['Features vs Time', 'Pressure Distribution'])
@@ -768,6 +759,9 @@ def main():
         st.markdown("---")
         st.markdown("© 2024 Herrenknecht AG. All rights reserved.")
         st.markdown("Created by Kursat Kilic - Geotechnical Digitalization")
+
+    except Exception as e:
+        st.error(f"An unexpected error occurred in the main function: {e}")
 
 if __name__ == "__main__":
     main()
