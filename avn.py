@@ -623,7 +623,7 @@ def calculate_derived_features(df, working_pressure_col, advance_rate_col, revol
         return df
 
             # Get distance-related columns
-            distance_columns = get_distance_columns(df)
+distance_columns = get_distance_columns(df)
             
             # Force distance column selection
             if not distance_columns:
