@@ -9,6 +9,11 @@ from scipy import stats
 import matplotlib.pyplot as plt
 import base64
 
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 # Set page config at the very beginning
 st.set_page_config(
     page_title="Herrenknecht Hard Rock Data Analysis App",
