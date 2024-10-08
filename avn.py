@@ -622,7 +622,7 @@ def main():
         set_background_color()
         add_logo()
 
-        st.write("Starting the app")  # Debug Statement
+        
         st.title("Herrenknecht Hard Rock Data Analysis App")
 
         # Sidebar for file upload and visualization selection
@@ -630,20 +630,20 @@ def main():
 
         uploaded_file = st.sidebar.file_uploader("Machine Data (CSV/Excel)", type=['csv', 'xlsx'])
         rock_strength_file = st.sidebar.file_uploader("Rock Strength Data (CSV/Excel)", type=['csv', 'xlsx'])
-        st.write("Files uploaded")  # Debug Statement
+        
 
         if uploaded_file is not None:
-            st.write("Loading machine data")  # Debug Statement
+            
             df = load_data(uploaded_file)
 
             if df is not None:
-                st.write("Machine data loaded successfully")  # Debug Statement
+                
                 # Identify special columns
-                st.write("Identifying special columns")  # Debug Statement
+                
                 working_pressure_cols, revolution_cols, advance_rate_cols = identify_special_columns(df)
 
                 # Suggest columns based on keywords
-                st.write("Suggesting columns based on keywords")  # Debug Statement
+                
                 suggested_working_pressure = suggest_column(df, ['working pressure', 'arbeitsdruck', 'pressure', 'druck', 'arbdr', 'sr_arbdr','SR_Arbdr'])
                 suggested_revolution = suggest_column(df, ['revolution', 'drehzahl', 'rpm', 'drehz', 'sr_drehz', 'SR_Drehz'])
                 suggested_advance_rate = suggest_column(df, ['advance rate', 'vortrieb', 'vorschub','VTgeschw','geschw'])
@@ -665,13 +665,13 @@ def main():
                     suggested_advance_rate
                 )
 
-                st.write("Getting user inputs for n1 and torque_constant")  # Debug Statement
+                
                 # Add input fields for n1 and torque_constant
                 n1 = st.sidebar.number_input("Enter n1 value (revolution 1/min)", min_value=0.0, value=1.0, step=0.1)
                 torque_constant = st.sidebar.number_input("Enter torque constant", min_value=0.0, value=1.0, step=0.1)
 
                 # Calculate derived features if possible
-                st.write("Calculating derived features")  # Debug Statement
+                
                 if working_pressure_col != 'None' or (advance_rate_col != 'None' and revolution_col != 'None'):
                     df = calculate_derived_features(df,
                                                  working_pressure_col if working_pressure_col != 'None' else None,
@@ -720,42 +720,42 @@ def main():
                     st.warning("Please select at least one feature for analysis.")
                 else:
                     if selected_option == 'Correlation Heatmap':
-                        st.write("Creating correlation heatmap")  # Debug Statement
+                        
                         create_correlation_heatmap(df, selected_features)
                     elif selected_option == 'Statistical Summary':
-                        st.write("Creating statistical summary")  # Debug Statement
+                        
                         create_statistical_summary(df, selected_features)
                     elif selected_option == 'Features vs Time' and time_column:
-                        st.write("Creating features vs time plot")  # Debug Statement
+                        
                         create_features_vs_time(df, selected_features, time_column)
                     elif selected_option == 'Pressure Distribution' and time_column:
-                        st.write("Creating pressure distribution polar plot")  # Debug Statement
+                        
                         if working_pressure_col and working_pressure_col != 'None':
                             create_pressure_distribution_polar_plot(df, working_pressure_col, time_column)
                         else:
                             st.warning("Please select a valid working pressure column.")
                     elif selected_option == 'Parameters vs Chainage':
-                        st.write("Creating parameters vs chainage plot")  # Debug Statement
+                        
                         create_parameters_vs_chainage(df, selected_features, selected_distance)
                     elif selected_option == 'Box Plots':
-                        st.write("Creating box plots")  # Debug Statement
+                        
                         create_multi_axis_box_plots(df, selected_features)
                     elif selected_option == 'Violin Plots':
-                        st.write("Creating violin plots")  # Debug Statement
+                        
                         create_multi_axis_violin_plots(df, selected_features)
                     elif selected_option == 'Rock Strength Comparison':
-                        st.write("Creating rock strength comparison chart")  # Debug Statement
+                        
                         if rock_df is not None and 'rock_type' in locals():
                             create_rock_strength_comparison_chart(df, rock_df, rock_type, selected_features)
                         else:
                             st.warning("Please upload rock strength data and select a rock type to view the comparison.")
                     elif selected_option == 'Thrust Force Plots':
-                        st.write("Creating thrust force plots")  # Debug Statement
+                        
                         create_thrust_force_plots(df, advance_rate_col)
 
                 # Add download button for processed data
                 if st.sidebar.button("Download Processed Data"):
-                    st.write("Preparing data for download")  # Debug Statement
+                   
                     csv = df.to_csv(index=False)
                     b64 = base64.b64encode(csv.encode()).decode()
                     href = f'<a href="data:file/csv;base64,{b64}" download="processed_data.csv">Download Processed CSV File</a>'
@@ -766,7 +766,7 @@ def main():
     except Exception as e:
         st.error(f"An unexpected error occurred in the main function: {e}")
 
-    st.write("End of main function")  # Debug Statement
+    
 
     # Add footer
     st.markdown("---")
