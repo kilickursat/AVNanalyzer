@@ -567,38 +567,38 @@ def main():
         uploaded_file = st.sidebar.file_uploader("Machine Data (CSV/Excel)", type=['csv', 'xlsx'])
         rock_strength_file = st.sidebar.file_uploader("Rock Strength Data (CSV/Excel)", type=['csv', 'xlsx'])
 
-    if uploaded_file is not None:
-        df = load_data(uploaded_file)
+        if uploaded_file is not None:
+            df = load_data(uploaded_file)
 
-        if df is not None:
-            # Identify special columns
-            working_pressure_cols, revolution_cols, advance_rate_cols = identify_special_columns(df)
-
-            # Suggest columns based on keywords
-            suggested_working_pressure = suggest_column(df, ['working pressure', 'arbeitsdruck', 'pressure', 'druck', 'arbdr', 'sr_arbdr','SR_Arbdr'])
-            suggested_revolution = suggest_column(df, ['revolution', 'drehzahl', 'rpm', 'drehz', 'sr_drehz', 'SR_Drehz'])
-            suggested_advance_rate = suggest_column(df, ['advance rate', 'vortrieb', 'vorschub','VTgeschw','geschw'])
-
-            # Let user select working pressure, revolution, and advance rate columns
-            working_pressure_col = st.sidebar.selectbox(
-                "Select Working Pressure Column", 
-                ['None'] + working_pressure_cols,
-                index=working_pressure_cols.index(suggested_working_pressure) + 1 if suggested_working_pressure else 0
-            )
-            revolution_col = st.sidebar.selectbox(
-                "Select Revolution Column", 
-                ['None'] + revolution_cols,
-                index=revolution_cols.index(suggested_revolution) + 1 if suggested_revolution else 0
-            )
-            advance_rate_col = st.sidebar.selectbox(
-                "Select Advance Rate Column", 
-                ['None'] + advance_rate_cols,
-                index=advance_rate_cols.index(suggested_advance_rate) + 1 if suggested_advance_rate else 0
-            )
-
-            # Add input fields for n1 and torque_constant
-            n1 = st.sidebar.number_input("Enter n1 value (revolution 1/min)", min_value=0.0, value=1.0, step=0.1)
-            torque_constant = st.sidebar.number_input("Enter torque constant", min_value=0.0, value=1.0, step=0.1)
+            if df is not None:
+                # Identify special columns
+                working_pressure_cols, revolution_cols, advance_rate_cols = identify_special_columns(df)
+    
+                # Suggest columns based on keywords
+                suggested_working_pressure = suggest_column(df, ['working pressure', 'arbeitsdruck', 'pressure', 'druck', 'arbdr', 'sr_arbdr','SR_Arbdr'])
+                suggested_revolution = suggest_column(df, ['revolution', 'drehzahl', 'rpm', 'drehz', 'sr_drehz', 'SR_Drehz'])
+                suggested_advance_rate = suggest_column(df, ['advance rate', 'vortrieb', 'vorschub','VTgeschw','geschw'])
+    
+                # Let user select working pressure, revolution, and advance rate columns
+                working_pressure_col = st.sidebar.selectbox(
+                    "Select Working Pressure Column", 
+                    ['None'] + working_pressure_cols,
+                    index=working_pressure_cols.index(suggested_working_pressure) + 1 if suggested_working_pressure else 0
+                )
+                revolution_col = st.sidebar.selectbox(
+                    "Select Revolution Column", 
+                    ['None'] + revolution_cols,
+                    index=revolution_cols.index(suggested_revolution) + 1 if suggested_revolution else 0
+                )
+                advance_rate_col = st.sidebar.selectbox(
+                    "Select Advance Rate Column", 
+                    ['None'] + advance_rate_cols,
+                    index=advance_rate_cols.index(suggested_advance_rate) + 1 if suggested_advance_rate else 0
+                )
+    
+                # Add input fields for n1 and torque_constant
+                n1 = st.sidebar.number_input("Enter n1 value (revolution 1/min)", min_value=0.0, value=1.0, step=0.1)
+                torque_constant = st.sidebar.number_input("Enter torque constant", min_value=0.0, value=1.0, step=0.1)
 
     except Exception as e:
         st.error(f"An error occurred in the main application: {e}")
