@@ -141,7 +141,7 @@ def create_rock_strength_comparison_chart(machine_df, rock_df, rock_type, select
             machine_values.append(avg_values[feature])
 
         ucs_values = [rock_df['UCS (MPa)'].iloc[0]] * len(selected_features)
-        bts_values = [rock_df['BTS (MPa)'].iloc[0]] * len(selected_features)
+        bts_values = [rock_df['BTS (MPa)'].iloc[0]] * len(selected_features]
         plt_values = [rock_df['PLT (MPa)'].iloc[0]] * len(selected_features)
 
         fig, axs = plt.subplots(2, 2, figsize=(16, 16), dpi=100)
