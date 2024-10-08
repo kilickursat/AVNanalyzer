@@ -44,15 +44,16 @@ def calculate_derived_features(df, working_pressure_col, advance_rate_col, revol
     """
     try:
         # Calculate "Calculated torque [kNm]"
-        df["Calculated torque [kNm]"] = calculate_torque(
-            working_pressure=df[working_pressure_col] if working_pressure_col != 'None' else None,
-            torque_constant=torque_constant,
-            current_speed=df[advance_rate_col] if advance_rate_col != 'None' else None,
-            n1=n1
-        )
+        if working_pressure_col is not None:
+            df["Calculated torque [kNm]"] = df[working_pressure_col] * torque_constant
+            
+            if advance_rate_col is not None:
+                # Apply the torque calculation based on current speed
+                mask = df[advance_rate_col] >= n1
+                df.loc[mask, "Calculated torque [kNm]"] = (n1 / df.loc[mask, advance_rate_col]) * torque_constant * df.loc[mask, working_pressure_col]
         
         # Calculate "Penetration Rate [mm/rev]" as Advance Rate / Revolution
-        if advance_rate_col != 'None' and revolution_col != 'None':
+        if advance_rate_col is not None and revolution_col is not None:
             df["Penetration Rate [mm/rev]"] = df[advance_rate_col] / df[revolution_col]
         else:
             df["Penetration Rate [mm/rev]"] = np.nan  # Assign NaN if columns are not selected
