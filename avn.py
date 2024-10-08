@@ -528,6 +528,7 @@ def main():
     set_background_color()
     add_logo()
 
+    st.write("Starting the app")  # Debug Statement
     st.title("Herrenknecht Hard Rock Data Analysis App")
 
     # Sidebar for file upload and visualization selection
@@ -535,11 +536,14 @@ def main():
     
     uploaded_file = st.sidebar.file_uploader("Machine Data (CSV/Excel)", type=['csv', 'xlsx'])
     rock_strength_file = st.sidebar.file_uploader("Rock Strength Data (CSV/Excel)", type=['csv', 'xlsx'])
+    st.write("Files uploaded")  # Debug Statement
 
     if uploaded_file is not None:
+        st.write("Loading machine data")  # Debug Statement
         df = load_data(uploaded_file)
 
         if df is not None:
+            st.write("Machine data loaded successfully")  # Debug Statement
             # Identify special columns
             working_pressure_cols, revolution_cols, advance_rate_cols = identify_special_columns(df)
 
@@ -653,6 +657,7 @@ def main():
             st.error("Error loading the data. Please check your file format.")
     else:
         st.info("Please upload a machine data file to begin analysis.")
+    st.write("End of main function")  # Debug Statement    
 
     # Add footer
     st.markdown("---")
