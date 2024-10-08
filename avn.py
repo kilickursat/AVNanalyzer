@@ -582,16 +582,16 @@ def main():
         
         uploaded_file = st.sidebar.file_uploader("Machine Data (CSV/Excel)", type=['csv', 'xlsx'])
         rock_strength_file = st.sidebar.file_uploader("Rock Strength Data (CSV/Excel)", type=['csv', 'xlsx'])
-        st.write("Files uploaded")  # Debug Statement
+        
 
         if uploaded_file is not None:
-            st.write("Loading machine data")  # Debug Statement
+            
             df = load_data(uploaded_file)
 
             if df is not None:
-                st.write("Machine data loaded successfully")  # Debug Statement
+                
                 # Identify special columns
-                st.write("Identifying special columns")  # Debug Statement
+               
                 working_pressure_cols, revolution_cols, advance_rate_cols = identify_special_columns(df)
 
                 # Suggest columns based on keywords
@@ -617,7 +617,7 @@ def main():
                     suggested_advance_rate
                 )
 
-                st.write("Getting user inputs for n1 and torque_constant")  # Debug Statement
+                
                 # Add input fields for n1 and torque_constant
                 n1 = st.sidebar.number_input("Enter n1 value (revolution 1/min)", min_value=0.0, value=1.0, step=0.1)
                 torque_constant = st.sidebar.number_input("Enter torque constant", min_value=0.0, value=1.0, step=0.1)
