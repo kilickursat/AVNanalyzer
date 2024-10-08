@@ -29,9 +29,9 @@ def calculate_derived_features(df, working_pressure_col, advance_rate_col, revol
     """
     try:
         if working_pressure_col:
-            df['Derived Torque'] = df[working_pressure_col] * torque_constant
+            df['Calculated Torque [kNm]'] = df[working_pressure_col] * torque_constant
         if advance_rate_col and revolution_col:
-            df['Derived Speed'] = df[advance_rate_col] / df[revolution_col]
+            df['Penetration rate [mm/rev]'] = df[advance_rate_col] / df[revolution_col]
         return df
     except Exception as e:
         st.error(f"Error calculating derived features: {e}")
