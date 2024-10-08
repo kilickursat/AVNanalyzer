@@ -494,34 +494,34 @@ def get_time_column(df):
     return None
 
 
-def create_thrust_force_plots(df):
-    thrust_force_col = suggest_column(df, ['thrust force', 'vorschubkraft', 'kraft','Kraft','Kraft_max','GesamtKraft','GesamKraft_STZ','GesamKraft_VTP'])
-    penetration_rate_col = suggest_column(df, ['penetration rate', 'penetrationsrate', 'penetration rate [mm/rev]', 'Penetration_Rate [mm/rev]', 'Penetration_Rate[mm/rev]'])
-    advance_rate_col = suggest_column(df, ['advance rate', 'vortriebsgeschwindigkeit', 'vortrieb','VTgeschw','Vtgeschw_Z'])
+# def create_thrust_force_plots(df):
+#     thrust_force_col = suggest_column(df, ['thrust force', 'vorschubkraft', 'kraft','Kraft','Kraft_max','GesamtKraft','GesamKraft_STZ','GesamKraft_VTP'])
+#     penetration_rate_col = suggest_column(df, ['penetration rate', 'penetrationsrate', 'penetration rate [mm/rev]', 'Penetration_Rate [mm/rev]', 'Penetration_Rate[mm/rev]'])
+#     advance_rate_col = suggest_column(df, ['advance rate', 'vortriebsgeschwindigkeit', 'vortrieb','VTgeschw','Vtgeschw_Z'])
 
-    if not thrust_force_col:
-        st.warning("Thrust force column not found in the dataset.")
-        return
+    # if not thrust_force_col:
+    #     st.warning("Thrust force column not found in the dataset.")
+    #     return
 
-    fig = make_subplots(rows=2, cols=1, subplot_titles=("Thrust Force vs Penetration Rate", "Thrust Force vs Advance Rate"))
+    # fig = make_subplots(rows=2, cols=1, subplot_titles=("Thrust Force vs Penetration Rate", "Thrust Force vs Advance Rate"))
 
-    if penetration_rate_col:
-        fig.add_trace(go.Scatter(x=df[thrust_force_col], y=df[penetration_rate_col], mode='markers', name='Penetration Rate'), row=1, col=1)
-    else:
-        st.warning("Penetration rate column not found in the dataset.")
+    # if penetration_rate_col:
+    #     fig.add_trace(go.Scatter(x=df[thrust_force_col], y=df[penetration_rate_col], mode='markers', name='Penetration Rate'), row=1, col=1)
+    # else:
+    #     st.warning("Penetration rate column not found in the dataset.")
 
-    if advance_rate_col:
-        fig.add_trace(go.Scatter(x=df[thrust_force_col], y=df[advance_rate_col], mode='markers', name='Advance Rate'), row=2, col=1)
-    else:
-        st.warning("Advance rate column not found in the dataset.")
+    # if advance_rate_col:
+    #     fig.add_trace(go.Scatter(x=df[thrust_force_col], y=df[advance_rate_col], mode='markers', name='Advance Rate'), row=2, col=1)
+    # else:
+    #     st.warning("Advance rate column not found in the dataset.")
 
-    fig.update_layout(height=800, width=800, title_text="Thrust Force Relationships")
-    fig.update_xaxes(title_text="Thrust Force [kN]", row=1, col=1)
-    fig.update_xaxes(title_text="Thrust Force [kN]", row=2, col=1)
-    fig.update_yaxes(title_text="Penetration Rate [mm/rev]", row=1, col=1)
-    fig.update_yaxes(title_text="Advance Rate [mm/min]", row=2, col=1)
+    # fig.update_layout(height=800, width=800, title_text="Thrust Force Relationships")
+    # fig.update_xaxes(title_text="Thrust Force [kN]", row=1, col=1)
+    # fig.update_xaxes(title_text="Thrust Force [kN]", row=2, col=1)
+    # fig.update_yaxes(title_text="Penetration Rate [mm/rev]", row=1, col=1)
+    # fig.update_yaxes(title_text="Advance Rate [mm/min]", row=2, col=1)
 
-    st.plotly_chart(fig)
+    # st.plotly_chart(fig)
 
 
 def main():
@@ -593,7 +593,7 @@ def main():
             time_column = get_time_column(df)
 
             # Visualization selection
-            options = ['Correlation Heatmap', 'Statistical Summary', 'Parameters vs Chainage', 'Box Plots', 'Violin Plots', 'Thrust Force Plots']
+            options = ['Correlation Heatmap', 'Statistical Summary', 'Parameters vs Chainage', 'Box Plots', 'Violin Plots']
             
             if time_column:
                 options.extend(['Features vs Time', 'Pressure Distribution'])
@@ -614,7 +614,7 @@ def main():
             # Main content area - Visualization based on user selection
             st.subheader(f"Visualization: {selected_option}")
             
-            if not selected_features and selected_option not in ['Pressure Distribution', 'Thrust Force Plots']:
+            if not selected_features and selected_option not in ['Pressure Distribution']:
                 st.warning("Please select at least one feature for analysis.")
             else:
                 if selected_option == 'Correlation Heatmap':
