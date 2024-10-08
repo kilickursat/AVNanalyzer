@@ -8,14 +8,6 @@ from scipy.interpolate import griddata
 from scipy import stats
 import matplotlib.pyplot as plt
 import base64
-import io
-import logging
-import traceback
-from datetime import datetime
-
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 # Set page config at the very beginning
 st.set_page_config(
