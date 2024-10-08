@@ -622,59 +622,67 @@ def main():
         set_background_color()
         add_logo()
 
+        st.write("Starting the app")  # Debug Statement
         st.title("Herrenknecht Hard Rock Data Analysis App")
 
         # Sidebar for file upload and visualization selection
         st.sidebar.header("Data Upload & Analysis")
-        
+
         uploaded_file = st.sidebar.file_uploader("Machine Data (CSV/Excel)", type=['csv', 'xlsx'])
         rock_strength_file = st.sidebar.file_uploader("Rock Strength Data (CSV/Excel)", type=['csv', 'xlsx'])
+        st.write("Files uploaded")  # Debug Statement
 
         if uploaded_file is not None:
+            st.write("Loading machine data")  # Debug Statement
             df = load_data(uploaded_file)
 
             if df is not None:
+                st.write("Machine data loaded successfully")  # Debug Statement
                 # Identify special columns
+                st.write("Identifying special columns")  # Debug Statement
                 working_pressure_cols, revolution_cols, advance_rate_cols = identify_special_columns(df)
 
                 # Suggest columns based on keywords
-                suggested_working_pressure = suggest_column(df, ['working pressure', 'arbeitsdruck', 'pressure', 'druck', 'arbdr', 'sr_arbdr','sr_arbdr'])
-                suggested_revolution = suggest_column(df, ['revolution', 'drehzahl', 'rpm', 'drehz', 'sr_drehz', 'sr_drehz'])
-                suggested_advance_rate = suggest_column(df, ['advance rate', 'vortrieb', 'vorschub','vtgeschw','geschw'])
+                st.write("Suggesting columns based on keywords")  # Debug Statement
+                suggested_working_pressure = suggest_column(df, ['working pressure', 'arbeitsdruck', 'pressure', 'druck', 'arbdr', 'sr_arbdr','SR_Arbdr'])
+                suggested_revolution = suggest_column(df, ['revolution', 'drehzahl', 'rpm', 'drehz', 'sr_drehz', 'SR_Drehz'])
+                suggested_advance_rate = suggest_column(df, ['advance rate', 'vortrieb', 'vorschub','VTgeschw','geschw'])
 
-                # Let user select working pressure, revolution, and advance rate columns with safe indexing
+                # Let user select working pressure, revolution, and advance rate columns
                 working_pressure_col = safe_selectbox(
-                    "Select Working Pressure Column", 
+                    "Select Working Pressure Column",
                     ['None'] + working_pressure_cols,
                     suggested_working_pressure
                 )
                 revolution_col = safe_selectbox(
-                    "Select Revolution Column", 
+                    "Select Revolution Column",
                     ['None'] + revolution_cols,
                     suggested_revolution
                 )
                 advance_rate_col = safe_selectbox(
-                    "Select Advance Rate Column", 
+                    "Select Advance Rate Column",
                     ['None'] + advance_rate_cols,
                     suggested_advance_rate
                 )
 
+                st.write("Getting user inputs for n1 and torque_constant")  # Debug Statement
                 # Add input fields for n1 and torque_constant
                 n1 = st.sidebar.number_input("Enter n1 value (revolution 1/min)", min_value=0.0, value=1.0, step=0.1)
                 torque_constant = st.sidebar.number_input("Enter torque constant", min_value=0.0, value=1.0, step=0.1)
 
                 # Calculate derived features if possible
+                st.write("Calculating derived features")  # Debug Statement
                 if working_pressure_col != 'None' or (advance_rate_col != 'None' and revolution_col != 'None'):
-                    df = calculate_derived_features(df, 
-                                                    working_pressure_col,
-                                                    advance_rate_col,
-                                                    revolution_col,
-                                                    n1,
-                                                    torque_constant)
+                    df = calculate_derived_features(df,
+                                                 working_pressure_col if working_pressure_col != 'None' else None,
+                                                 advance_rate_col if advance_rate_col != 'None' else None,
+                                                 revolution_col if revolution_col != 'None' else None,
+                                                 n1,
+                                                 torque_constant)
 
                 # Get distance-related columns
                 distance_columns = get_distance_columns(df)
-                
+
                 # Force distance column selection
                 if not distance_columns:
                     distance_columns = df.columns.tolist()  # Use all columns if no distance columns are detected
@@ -688,10 +696,10 @@ def main():
 
                 # Visualization selection
                 options = ['Correlation Heatmap', 'Statistical Summary', 'Parameters vs Chainage', 'Box Plots', 'Violin Plots', 'Thrust Force Plots']
-                
+
                 if time_column:
                     options.extend(['Features vs Time', 'Pressure Distribution'])
-                
+
                 if rock_strength_file:
                     options.append('Rock Strength Comparison')
 
@@ -699,69 +707,71 @@ def main():
 
                 # Rock strength data processing
                 rock_df = None
-                rock_type = None
                 if rock_strength_file:
                     rock_strength_data = read_rock_strength_data(rock_strength_file)
                     if rock_strength_data is not None:
                         rock_df = preprocess_rock_strength_data(rock_strength_data)
-                        if rock_df is not None and not rock_df.empty:
-                            rock_type = st.sidebar.selectbox("Select Rock Type", rock_df.index.tolist())
-                        else:
-                            st.warning("Rock strength data is empty after preprocessing.")
+                        rock_type = st.sidebar.selectbox("Select Rock Type", rock_df.index)
 
                 # Main content area - Visualization based on user selection
                 st.subheader(f"Visualization: {selected_option}")
-                
+
                 if not selected_features and selected_option not in ['Pressure Distribution', 'Thrust Force Plots']:
                     st.warning("Please select at least one feature for analysis.")
                 else:
                     if selected_option == 'Correlation Heatmap':
+                        st.write("Creating correlation heatmap")  # Debug Statement
                         create_correlation_heatmap(df, selected_features)
                     elif selected_option == 'Statistical Summary':
+                        st.write("Creating statistical summary")  # Debug Statement
                         create_statistical_summary(df, selected_features)
                     elif selected_option == 'Features vs Time' and time_column:
+                        st.write("Creating features vs time plot")  # Debug Statement
                         create_features_vs_time(df, selected_features, time_column)
                     elif selected_option == 'Pressure Distribution' and time_column:
-                        if working_pressure_col != 'None':
+                        st.write("Creating pressure distribution polar plot")  # Debug Statement
+                        if working_pressure_col and working_pressure_col != 'None':
                             create_pressure_distribution_polar_plot(df, working_pressure_col, time_column)
                         else:
                             st.warning("Please select a valid working pressure column.")
                     elif selected_option == 'Parameters vs Chainage':
+                        st.write("Creating parameters vs chainage plot")  # Debug Statement
                         create_parameters_vs_chainage(df, selected_features, selected_distance)
                     elif selected_option == 'Box Plots':
+                        st.write("Creating box plots")  # Debug Statement
                         create_multi_axis_box_plots(df, selected_features)
                     elif selected_option == 'Violin Plots':
+                        st.write("Creating violin plots")  # Debug Statement
                         create_multi_axis_violin_plots(df, selected_features)
                     elif selected_option == 'Rock Strength Comparison':
-                        if rock_df is not None and rock_type is not None:
+                        st.write("Creating rock strength comparison chart")  # Debug Statement
+                        if rock_df is not None and 'rock_type' in locals():
                             create_rock_strength_comparison_chart(df, rock_df, rock_type, selected_features)
                         else:
                             st.warning("Please upload rock strength data and select a rock type to view the comparison.")
                     elif selected_option == 'Thrust Force Plots':
+                        st.write("Creating thrust force plots")  # Debug Statement
                         create_thrust_force_plots(df)
 
                 # Add download button for processed data
                 if st.sidebar.button("Download Processed Data"):
-                    try:
-                        csv = df.to_csv(index=False)
-                        b64 = base64.b64encode(csv.encode()).decode()
-                        href = f'<a href="data:file/csv;base64,{b64}" download="processed_data.csv">Download Processed CSV File</a>'
-                        st.sidebar.markdown(href, unsafe_allow_html=True)
-                    except Exception as e:
-                        st.error(f"Error preparing data for download: {e}")
+                    st.write("Preparing data for download")  # Debug Statement
+                    csv = df.to_csv(index=False)
+                    b64 = base64.b64encode(csv.encode()).decode()
+                    href = f'<a href="data:file/csv;base64,{b64}" download="processed_data.csv">Download Processed CSV File</a>'
+                    st.sidebar.markdown(href, unsafe_allow_html=True)
 
             else:
                 st.error("Error loading the data. Please check your file format.")
-        else:
-            st.info("Please upload a machine data file to begin analysis.")
-        
-        # Add footer
-        st.markdown("---")
-        st.markdown("© 2024 Herrenknecht AG. All rights reserved.")
-        st.markdown("Created by Kursat Kilic - Geotechnical Digitalization")
-
     except Exception as e:
         st.error(f"An unexpected error occurred in the main function: {e}")
+
+    st.write("End of main function")  # Debug Statement
+
+    # Add footer
+    st.markdown("---")
+    st.markdown("© 2024 Herrenknecht AG. All rights reserved.")
+    st.markdown("Created by Kursat Kilic - Geotechnical Digitalization")
 
 if __name__ == "__main__":
     main()
