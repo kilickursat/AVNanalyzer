@@ -797,5 +797,5 @@ def main():
         st.markdown("© 2024 Herrenknecht AG. All rights reserved.")
         st.markdown("Created by Kursat Kilic - Geotechnical Digitalization")
     
-    if __name__ == "__main__":
-        main()
+if __name__ == "__main__":
+    main()
