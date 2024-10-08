@@ -120,30 +120,34 @@ def preprocess_rock_strength_data(df):
 # Updated function to create comparison chart for machine parameters vs rock strength
 def create_rock_strength_comparison_chart(machine_df, rock_df, rock_type, selected_features):
     try:
-        rock_df = rock_df.loc[[rock_type]]
+        # Filter rock_df for the selected rock_type
+        rock_df = rock_df[rock_df.index == rock_type]
         if rock_df.empty:
             st.error(f"No data available for {rock_type} rock type.")
             return
 
+        # Calculate average values of selected machine features
         avg_values = machine_df[selected_features].mean()
 
         parameters = []
         machine_values = []
         for feature in selected_features:
-            if any(keyword in feature.lower() for keyword in ['advance rate', 'vortrieb', 'vorschub', 'vtgeschw', 'geschw']):
+            if any(keyword in feature.lower() for keyword in ['advance rate', 'vortrieb', 'vorschub', 'VTgeschw', 'geschw']):
                 parameters.append('Advance rate [mm/min]')
-            elif any(keyword in feature.lower() for keyword in ['revolution', 'drehzahl', 'rpm', 'drehz', 'sr_drehz', 'sr_drehz']):
+            elif any(keyword in feature.lower() for keyword in ['revolution', 'drehzahl', 'rpm', 'drehz', 'sr_drehz', 'SR_Drehz']):
                 parameters.append('Revolution [rpm]')
-            elif any(keyword in feature.lower() for keyword in ['working pressure', 'arbeitsdruck', 'pressure', 'druck', 'arbdr', 'sr_arbdr', 'sr_arbdr']):
+            elif any(keyword in feature.lower() for keyword in ['working pressure', 'arbeitsdruck', 'pressure', 'druck', 'arbdr', 'sr_arbdr', 'SR_Arbdr']):
                 parameters.append('Working pressure [bar]')
             else:
                 parameters.append(feature)
             machine_values.append(avg_values[feature])
 
+        # Corrected Line: Ensure proper closing parenthesis
         ucs_values = [rock_df['UCS (MPa)'].iloc[0]] * len(selected_features)
-        bts_values = [rock_df['BTS (MPa)'].iloc[0]] * len(selected_features]
+        bts_values = [rock_df['BTS (MPa)'].iloc[0]] * len(selected_features)  # Fixed here
         plt_values = [rock_df['PLT (MPa)'].iloc[0]] * len(selected_features)
 
+        # Create subplots
         fig, axs = plt.subplots(2, 2, figsize=(16, 16), dpi=100)
         fig.suptitle(f"Machine Parameters vs {rock_type} Rock Strength", fontsize=20, fontweight='bold')
 
@@ -159,7 +163,7 @@ def create_rock_strength_comparison_chart(machine_df, rock_df, rock_type, select
             ax.set_title(f'{rock_type} - {param}', fontsize=16, fontweight='bold')
             ax.set_xticks(x)
 
-            ax.set_xticklabels([param, 'UCS', 'BTS', 'PLT'], fontsize=12, fontweight='bold')
+            ax.set_xticklabels(['Machine', 'UCS', 'BTS', 'PLT'], fontsize=12, fontweight='bold')
 
             ax.tick_params(axis='y', labelsize=10)
 
@@ -171,6 +175,7 @@ def create_rock_strength_comparison_chart(machine_df, rock_df, rock_type, select
         plt.tight_layout(rect=[0, 0.03, 1, 0.95])
 
         st.pyplot(fig)
+
     except Exception as e:
         st.error(f"Error creating rock strength comparison chart: {e}")
 
