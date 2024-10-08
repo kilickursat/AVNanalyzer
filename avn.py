@@ -23,6 +23,7 @@ def clean_numeric_column(df, column_name):
     return df
 
 # Enhanced Function to read CSV or Excel file with validation
+@st.cache(allow_output_mutation=True)
 def load_data(file):
     if file.name.endswith('.csv'):
         df = pd.read_csv(file, sep=';', decimal=',', na_values=['', 'NA', 'N/A', 'nan', 'NaN'], keep_default_na=True)
