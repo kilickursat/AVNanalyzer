@@ -564,8 +564,8 @@ def main():
     # Sidebar for file upload and visualization selection
         st.sidebar.header("Data Upload & Analysis")
     
-    uploaded_file = st.sidebar.file_uploader("Machine Data (CSV/Excel)", type=['csv', 'xlsx'])
-    rock_strength_file = st.sidebar.file_uploader("Rock Strength Data (CSV/Excel)", type=['csv', 'xlsx'])
+        uploaded_file = st.sidebar.file_uploader("Machine Data (CSV/Excel)", type=['csv', 'xlsx'])
+        rock_strength_file = st.sidebar.file_uploader("Rock Strength Data (CSV/Excel)", type=['csv', 'xlsx'])
 
     if uploaded_file is not None:
         df = load_data(uploaded_file)
