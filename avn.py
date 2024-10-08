@@ -555,11 +555,10 @@ def get_time_column(df):
             return col
     return None
 
-def create_thrust_force_plots(df):
+def create_thrust_force_plots(df, advance_rate_col):
     try:
         thrust_force_col = suggest_column(df, ['thrust force', 'vorschubkraft', 'kraft','kraft_max','gesamtkraft','gesamtkraft_stz','gesamtkraft_vtp'])
-        penetration_rate_col = 'Penetration Rate [mm/rev]'  # As per derived feature
-        advance_rate_col = 'Advance Rate [mm/min]'
+        penetration_rate_col = 'Penetration Rate [mm/rev]'
 
         if thrust_force_col is None:
             st.warning("Thrust force column not found in the dataset.")
@@ -570,7 +569,7 @@ def create_thrust_force_plots(df):
             return
 
         if advance_rate_col not in df.columns:
-            st.warning("Advance Rate [mm/min] column not found.")
+            st.warning(f"Selected Advance Rate column '{advance_rate_col}' not found.")
             return
 
         fig = make_subplots(rows=2, cols=1, subplot_titles=("Thrust Force vs Penetration Rate", "Thrust Force vs Advance Rate"))
@@ -589,7 +588,7 @@ def create_thrust_force_plots(df):
             x=df[advance_rate_col], 
             y=df[thrust_force_col], 
             mode='markers', 
-            name='Advance Rate [mm/min]',
+            name=f'Advance Rate ({advance_rate_col})',
             marker=dict(color='green', size=5)
         ), row=2, col=1)
 
@@ -599,7 +598,7 @@ def create_thrust_force_plots(df):
             title_text="Thrust Force Relationships"
         )
         fig.update_xaxes(title_text="Penetration Rate [mm/rev]", row=1, col=1)
-        fig.update_xaxes(title_text="Advance Rate [mm/min]", row=2, col=1)
+        fig.update_xaxes(title_text=f"Advance Rate ({advance_rate_col})", row=2, col=1)
         fig.update_yaxes(title_text="Thrust Force [kN]", row=1, col=1)
         fig.update_yaxes(title_text="Thrust Force [kN]", row=2, col=1)
 
@@ -752,7 +751,7 @@ def main():
                             st.warning("Please upload rock strength data and select a rock type to view the comparison.")
                     elif selected_option == 'Thrust Force Plots':
                         st.write("Creating thrust force plots")  # Debug Statement
-                        create_thrust_force_plots(df)
+                        create_thrust_force_plots(df, advance_rate_col)
 
                 # Add download button for processed data
                 if st.sidebar.button("Download Processed Data"):
