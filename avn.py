@@ -622,8 +622,8 @@ def main():
                 n1 = st.sidebar.number_input("Enter n1 value (revolution 1/min)", min_value=0.0, value=1.0, step=0.1)
                 torque_constant = st.sidebar.number_input("Enter torque constant", min_value=0.0, value=1.0, step=0.1)
 
-                st.write("Calculating derived features")  # Debug Statement
                 # Calculate derived features if possible
+                st.write("Calculating derived features")  # Debug Statement
                 if working_pressure_col != 'None' or (advance_rate_col != 'None' and revolution_col != 'None'):
                     df = calculate_derived_features(df, 
                                                  working_pressure_col if working_pressure_col != 'None' else None,
@@ -632,23 +632,19 @@ def main():
                                                  n1,
                                                  torque_constant)
 
-                st.write("Getting distance-related columns")  # Debug Statement
                 # Get distance-related columns
                 distance_columns = get_distance_columns(df)
                 
                 # Force distance column selection
                 if not distance_columns:
-                    st.write("No distance-related columns found. Using all columns.")  # Debug Statement
                     distance_columns = df.columns.tolist()  # Use all columns if no distance columns are detected
                 selected_distance = st.sidebar.selectbox("Select distance/chainage column", distance_columns)
 
                 # Let user select features for analysis
                 selected_features = st.sidebar.multiselect("Select features for analysis", df.columns)
-                st.write(f"Selected features: {selected_features}")  # Debug Statement
 
                 # Check for time-related columns
                 time_column = get_time_column(df)
-                st.write(f"Time column identified: {time_column}")  # Debug Statement
 
                 # Visualization selection
                 options = ['Correlation Heatmap', 'Statistical Summary', 'Parameters vs Chainage', 'Box Plots', 'Violin Plots', 'Thrust Force Plots']
@@ -660,19 +656,14 @@ def main():
                     options.append('Rock Strength Comparison')
 
                 selected_option = st.sidebar.radio("Choose visualization", options)
-                st.write(f"Selected visualization option: {selected_option}")  # Debug Statement
 
                 # Rock strength data processing
                 rock_df = None
                 if rock_strength_file:
-                    st.write("Reading rock strength data")  # Debug Statement
                     rock_strength_data = read_rock_strength_data(rock_strength_file)
                     if rock_strength_data is not None:
-                        st.write("Preprocessing rock strength data")  # Debug Statement
                         rock_df = preprocess_rock_strength_data(rock_strength_data)
-                        if rock_df is not None:
-                            rock_type = st.sidebar.selectbox("Select Rock Type", rock_df.index)
-                            st.write(f"Selected rock type: {rock_type}")  # Debug Statement
+                        rock_type = st.sidebar.selectbox("Select Rock Type", rock_df.index)
 
                 # Main content area - Visualization based on user selection
                 st.subheader(f"Visualization: {selected_option}")
@@ -724,15 +715,15 @@ def main():
 
             else:
                 st.error("Error loading the data. Please check your file format.")
-        else:
-            st.info("Please upload a machine data file to begin analysis.")
-        
-        st.write("End of main function")  # Debug Statement    
+    except Exception as e:
+        st.error(f"An unexpected error occurred in the main function: {e}")
 
-        # Add footer
-        st.markdown("---")
-        st.markdown("© 2024 Herrenknecht AG. All rights reserved.")
-        st.markdown("Created by Kursat Kilic - Geotechnical Digitalization")
-    
-    if __name__ == "__main__":
-        main()
+    st.write("End of main function")  # Debug Statement    
+
+    # Add footer
+    st.markdown("---")
+    st.markdown("© 2024 Herrenknecht AG. All rights reserved.")
+    st.markdown("Created by Kursat Kilic - Geotechnical Digitalization")
+
+if __name__ == "__main__":
+    main()
