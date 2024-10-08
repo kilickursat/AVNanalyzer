@@ -562,7 +562,7 @@ def main():
         st.title("Herrenknecht Hard Rock Data Analysis App")
 
     # Sidebar for file upload and visualization selection
-    st.sidebar.header("Data Upload & Analysis")
+        st.sidebar.header("Data Upload & Analysis")
     
     uploaded_file = st.sidebar.file_uploader("Machine Data (CSV/Excel)", type=['csv', 'xlsx'])
     rock_strength_file = st.sidebar.file_uploader("Rock Strength Data (CSV/Excel)", type=['csv', 'xlsx'])
