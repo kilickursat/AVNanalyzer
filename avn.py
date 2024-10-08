@@ -8,12 +8,27 @@ from scipy.interpolate import griddata
 from scipy import stats
 import matplotlib.pyplot as plt
 import base64
+import io
+import sys
+import traceback
+import logging
 
-# Set page config at the very beginning
-st.set_page_config(
-    page_title="Herrenknecht Hard Rock Data Analysis App",
-    #page_icon="https://github.com/kilickursat/AVNanalyzer/blob/main/Herrenknecht_logo.svg-1024x695.png?raw=true"
-)
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+def init_page_config():
+    try:
+        st.set_page_config(
+            page_title="Herrenknecht Hard Rock Data Analysis App",
+            layout="wide",  # This ensures better use of screen space
+            initial_sidebar_state="expanded"
+        )
+    except Exception as e:
+        st.error(f"Error setting page configuration: {e}")
+
+# Call this at the very beginning of your main()
+init_page_config()
 
 # Helper function to clean numeric columns
 def clean_numeric_column(df, column_name):
@@ -23,20 +38,34 @@ def clean_numeric_column(df, column_name):
     return df
 
 # Enhanced Function to read CSV or Excel file with validation
+@st.cache_data
 def load_data(file):
-    if file.name.endswith('.csv'):
-        df = pd.read_csv(file, sep=';', decimal=',', na_values=['', 'NA', 'N/A', 'nan', 'NaN'], keep_default_na=True)
-    elif file.name.endswith('.xlsx'):
-        df = pd.read_excel(file)
-    else:
-        st.error("Unsupported file format")
+    try:
+        if file.name.endswith('.csv'):
+            try:
+                # First attempt with semicolon separator
+                df = pd.read_csv(file, sep=';', decimal=',', na_values=['', 'NA', 'N/A', 'nan', 'NaN'])
+            except:
+                # Second attempt with comma separator
+                df = pd.read_csv(file, sep=',', na_values=['', 'NA', 'N/A', 'nan', 'NaN'])
+        elif file.name.endswith('.xlsx'):
+            df = pd.read_excel(file)
+        else:
+            st.error("Unsupported file format")
+            return None
+        
+        if df.empty:
+            st.error("The uploaded file is empty or not formatted correctly.")
+            return None
+            
+        # Clean numeric columns
+        for column in df.select_dtypes(include=['float64', 'int64']).columns:
+            df = clean_numeric_column(df, column)
+            
+        return df
+    except Exception as e:
+        st.error(f"Error loading data: {e}")
         return None
-    
-    if df.empty:
-        st.error("The uploaded file is empty or not formatted correctly.")
-        return None
-
-    return df
 
 def read_rock_strength_data(file):
     try:
@@ -525,10 +554,12 @@ def create_thrust_force_plots(df):
 
 
 def main():
-    set_background_color()
-    add_logo()
+    try:
+        init_page_config()
+        set_background_color()
+        add_logo()
 
-    st.title("Herrenknecht Hard Rock Data Analysis App")
+        st.title("Herrenknecht Hard Rock Data Analysis App")
 
     # Sidebar for file upload and visualization selection
     st.sidebar.header("Data Upload & Analysis")
@@ -569,14 +600,27 @@ def main():
             n1 = st.sidebar.number_input("Enter n1 value (revolution 1/min)", min_value=0.0, value=1.0, step=0.1)
             torque_constant = st.sidebar.number_input("Enter torque constant", min_value=0.0, value=1.0, step=0.1)
 
+    except Exception as e:
+        st.error(f"An error occurred in the main application: {e}")
+        st.error("Please refresh the page and try again.")
+
             # Calculate derived features if possible
-            if working_pressure_col != 'None' or (advance_rate_col != 'None' and revolution_col != 'None'):
-                df = calculate_derived_features(df, 
-                                             working_pressure_col if working_pressure_col != 'None' else None,
-                                             advance_rate_col if advance_rate_col != 'None' else None,
-                                             revolution_col if revolution_col != 'None' else None,
-                                             n1,
-                                             torque_constant)
+def calculate_derived_features(df, working_pressure_col, advance_rate_col, revolution_col, n1, torque_constant):
+    """
+    Calculate derived features from the machine parameters
+    """
+    try:
+        if working_pressure_col:
+            df['Calculated_Torque'] = df[working_pressure_col] * torque_constant
+            
+        if advance_rate_col and revolution_col:
+            # Convert advance rate from mm/min to mm/rev
+            df['Penetration_Rate'] = df[advance_rate_col] / (df[revolution_col] * n1)
+            
+        return df
+    except Exception as e:
+        st.error(f"Error calculating derived features: {e}")
+        return df
 
             # Get distance-related columns
             distance_columns = get_distance_columns(df)
