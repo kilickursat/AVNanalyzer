@@ -816,7 +816,7 @@ def main():
 
                 all_features = df.columns.tolist()
                 
-                   default_selected = []
+                default_selected = []
                 if 'Penetration Rate [mm/rev]' in all_features:
                     default_selected.append('Penetration Rate [mm/rev]')
                 if 'Average Speed (mm/min)' in all_features:
