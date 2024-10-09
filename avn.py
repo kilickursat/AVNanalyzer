@@ -864,7 +864,7 @@ def main():
                         else:
                             st.warning("Please upload rock strength data and select a rock type to view the comparison.")
                     elif selected_option == 'Thrust Force Plots':
-                        create_thrust_force_plots(df)
+                        create_thrust_force_plots(df,advance_rate_col)
 
                 # Add download button for processed data
                 if st.sidebar.button("Download Processed Data"):
