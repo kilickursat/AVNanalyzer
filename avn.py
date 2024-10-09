@@ -1,3 +1,10 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Wed Oct  9 10:24:53 2024
+
+@author: KilicK
+"""
+
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -21,45 +28,45 @@ def clean_numeric_column(df, column_name):
     df[column_name] = df[column_name].fillna(df[column_name].median())
     return df
 
-def calculate_derived_features(df, working_pressure_col, advance_rate_col, revolution_col, n1, torque_constant):
+# Advanced rate calculation function
+def calculate_advance_rate_and_stats(df, distance_column, time_column):
+    """
+    Calculate advance rate statistics from distance and time data.
+    """
     try:
-        # Calculate torque
-        if working_pressure_col is not None:
-            df["Calculated torque [kNm]"] = df[working_pressure_col] * torque_constant
+        if not all(col in df.columns for col in [distance_column, time_column]):
+            raise ValueError(f"Required columns not found in DataFrame")
             
-            if advance_rate_col is not None:
-                mask = df[advance_rate_col] >= n1
-                df.loc[mask, "Calculated torque [kNm]"] = (n1 / df.loc[mask, advance_rate_col]) * torque_constant * df.loc[mask, working_pressure_col]
-        
-        # Calculate advance rate statistics
-        time_column = get_time_column(df)
-        distance_columns = get_distance_columns(df)
-        distance_column = distance_columns[0] if distance_columns else None
-        
-        if time_column and distance_column:
-            # Calculate and assign Average Speed (mm/min) as Advance Rate
-            stats, avg_speed = calculate_advance_rate_and_stats(df, distance_column, time_column)
-            if stats:
-                df['Average Speed (mm/min)'] = avg_speed  # Ensure the column is created
-            else:
-                st.warning("Unable to calculate Average Speed, check the time and distance columns.")
-        
-        # Calculate penetration rate if both revolution and advance rate (Average Speed) are available
-        if revolution_col is not None and 'Average Speed (mm/min)' in df.columns:
-            df["Penetration Rate [mm/rev]"] = df['Average Speed (mm/min)'] / df[revolution_col]
+        if len(df) > 1:
+            weg = round(df[distance_column].max() - df[distance_column].min(), 2)
+            zeit = round(df[time_column].max() - df[time_column].min(), 2)
         else:
-            st.warning("Revolution or Average Speed data is missing. Unable to calculate Penetration Rate.")
-
-        return df
+            weg = round(df[distance_column].iloc[0], 2)
+            zeit = round(df[time_column].iloc[0], 2)
+            
+        # Convert microseconds to minutes
+        zeit = zeit * (0.000001 / 60)
+        
+        # Calculate average speed
+        average_speed = round(weg / zeit, 2) if zeit != 0 else 0
+        
+        # Create results dictionary
+        result = {
+            "Total Distance (mm)": weg,
+            "Total Time (min)": zeit,
+            "Average Speed (mm/min)": average_speed
+        }
+        
+        return result, average_speed
         
     except Exception as e:
-        st.error(f"Error calculating derived features: {e}")
-        return df
+        st.error(f"Error in advance rate calculation: {e}")
+        return None, 0
 
 # Penetration rate calculation function
 def calculate_penetration_rate(row):
     """
-    Calculate penetration rate from advance rate (Average Speed in mm/min) and revolution (rpm).
+    Calculate penetration rate from speed and revolution data.
     """
     try:
         speed = row['Average Speed (mm/min)']
@@ -70,10 +77,11 @@ def calculate_penetration_rate(row):
         elif revolution == 0:
             return np.inf if speed != 0 else 0
         else:
-            return round(speed / revolution, 4)  # Penetration rate: mm/rev
+            return round(speed / revolution, 4)
             
     except Exception as e:
-        return np.nan  # Avoid repeating the error message multiple times
+        st.error(f"Error in penetration rate calculation: {e}")
+        return np.nan
 
 # Function to calculate torque
 def calculate_torque(working_pressure, torque_constant, current_speed=None, n1=None):
@@ -88,6 +96,9 @@ def calculate_torque(working_pressure, torque_constant, current_speed=None, n1=N
 
 # Function to calculate derived features
 def calculate_derived_features(df, working_pressure_col, advance_rate_col, revolution_col, n1, torque_constant):
+    """
+    Calculate derived features including advance rate, penetration rate, and torque.
+    """
     try:
         # Calculate torque
         if working_pressure_col is not None:
@@ -110,10 +121,6 @@ def calculate_derived_features(df, working_pressure_col, advance_rate_col, revol
                 # Calculate penetration rate if revolution data is available
                 if revolution_col is not None:
                     df["Penetration Rate [mm/rev]"] = df.apply(calculate_penetration_rate, axis=1)
-
-        # Ensure Penetration Rate column is added for visualization and analysis
-        if "Penetration Rate [mm/rev]" not in df.columns:
-            df["Penetration Rate [mm/rev]"] = df.apply(calculate_penetration_rate, axis=1)
         
         return df
         
@@ -705,6 +712,17 @@ def safe_selectbox(label, options, suggested_option):
 # Add these functions after the existing helper functions and before the visualization functions
 
 def calculate_advance_rate_and_stats(df, distance_column, time_column):
+    """
+    Calculate advance rate statistics from distance and time data.
+    
+    Parameters:
+    df (pandas.DataFrame): DataFrame containing distance and time columns
+    distance_column (str): Name of the distance column
+    time_column (str): Name of the time column
+    
+    Returns:
+    tuple: (dict of statistics, average_speed)
+    """
     try:
         if len(df) > 1:
             weg = round(df[distance_column].max() - df[distance_column].min(), 2)
