@@ -82,9 +82,15 @@ def calculate_torque(working_pressure, torque_constant, current_speed=None, n1=N
 def calculate_derived_features(df, working_pressure_col, revolution_col, n1, torque_constant, selected_distance):
     try:
         if working_pressure_col is not None and revolution_col is not None:
+            df[working_pressure_col] = pd.to_numeric(df[working_pressure_col], errors='coerce')
+            df[revolution_col] = pd.to_numeric(df[revolution_col], errors='coerce')
+
             def calculate_torque_wrapper(row):
                 working_pressure = row[working_pressure_col]
                 current_speed = row[revolution_col]
+
+                if pd.isna(working_pressure) or pd.isna(current_speed):
+                    return np.nan
 
                 if current_speed < n1:
                     torque = working_pressure * torque_constant
@@ -104,12 +110,12 @@ def calculate_derived_features(df, working_pressure_col, revolution_col, n1, tor
             df['Average Speed (mm/min)'] = average_speed
             
             if revolution_col is not None:
-                df['Penetration Rate [mm/rev]'] = df.apply(calculate_penetration_rate, axis=1)
+                df['Penetration Rate [mm/rev]'] = df.apply(lambda row: calculate_penetration_rate(row, revolution_col), axis=1)
         
         return df
         
     except Exception as e:
-        st.error(f"Error calculating derived features: {e}")
+        st.error(f"Error calculating derived features: {str(e)}")
         return df
 
 
@@ -698,53 +704,38 @@ def safe_selectbox(label, options, suggested_option):
 # Add these functions after the existing helper functions and before the visualization functions
 
 def calculate_advance_rate_and_stats(df, distance_column, time_column):
-    """
-    Calculate advance rate statistics from distance and time data.
-    
-    Parameters:
-    df (pandas.DataFrame): DataFrame containing distance and time columns
-    distance_column (str): Name of the distance column
-    time_column (str): Name of the time column
-    
-    Returns:
-    tuple: (dict of statistics, average_speed)
-    """
     try:
+        df[distance_column] = pd.to_numeric(df[distance_column], errors='coerce')
+        df[time_column] = pd.to_numeric(df[time_column], errors='coerce')
+
         if len(df) > 1:
             weg = round(df[distance_column].max() - df[distance_column].min(), 2)
             zeit = round(df[time_column].max() - df[time_column].min(), 2)
         else:
             weg = df[distance_column].iloc[0]
             zeit = df[time_column].iloc[0]
-            
-        zeit = zeit * (0.000001 / 60)  # Convert microseconds to minutes
+
+        zeit = zeit * (0.000001 / 60)
+
         average_speed = round(weg / zeit, 2) if zeit != 0 else 0
-        
+
         result = {
             "Total Distance (mm)": weg,
             "Total Time (min)": zeit,
             "Average Speed (mm/min)": average_speed
         }
-        
+
         return result, average_speed
     except Exception as e:
-        st.error(f"Error calculating advance rate stats: {e}")
+        st.error(f"Error calculating advance rate stats: {str(e)}")
         return None, 0
 
-def calculate_penetration_rate(row):
-    """
-    Calculate penetration rate from speed and revolution data.
-    
-    Parameters:
-    row (pandas.Series): Row containing 'Average Speed (mm/min)' and 'Revolution [rpm]' values
-    
-    Returns:
-    float: Penetration rate value
-    """
+
+def calculate_penetration_rate(row, revolution_col):
     try:
         speed = row['Average Speed (mm/min)']
-        revolution = row['Revolution [rpm]']
-        
+        revolution = row[revolution_col]
+
         if pd.isna(speed) or pd.isna(revolution):
             return np.nan
         elif revolution == 0:
@@ -752,9 +743,8 @@ def calculate_penetration_rate(row):
         else:
             return round(speed / revolution, 4)
     except Exception as e:
-        st.error(f"Error calculating penetration rate: {e}")
+        st.error(f"Error calculating penetration rate: {str(e)}")
         return np.nan
-
 
 # Main function
 def main():
@@ -780,9 +770,8 @@ def main():
                 # Suggest columns based on keywords
                 suggested_working_pressure = suggest_column(df, ['working pressure', 'arbeitsdruck', 'pressure', 'druck', 'arbdr', 'sr_arbdr','SR_Arbdr'])
                 suggested_revolution = suggest_column(df, ['revolution', 'drehzahl', 'rpm', 'drehz', 'sr_drehz', 'SR_Drehz'])
-                suggested_advance_rate = suggest_column(df, ['advance rate', 'vortrieb', 'vorschub','VTgeschw','geschw'])
 
-                # Let user select working pressure, revolution, and advance rate columns
+                # Let user select working pressure and revolution columns
                 working_pressure_col = safe_selectbox(
                     "Select Working Pressure Column",
                     ['None'] + working_pressure_cols,
@@ -793,24 +782,10 @@ def main():
                     ['None'] + revolution_cols,
                     suggested_revolution
                 )
-                advance_rate_col = safe_selectbox(
-                    "Select Advance Rate Column",
-                    ['None'] + advance_rate_cols,
-                    suggested_advance_rate
-                )
 
                 # Add input fields for n1 and torque_constant
                 n1 = st.sidebar.number_input("Enter n1 value (revolution 1/min)", min_value=0.0, value=1.0, step=0.1)
                 torque_constant = st.sidebar.number_input("Enter torque constant", min_value=0.0, value=1.0, step=0.1)
-
-                # Calculate derived features if possible
-                if working_pressure_col != 'None' or (advance_rate_col != 'None' and revolution_col != 'None'):
-                    df = calculate_derived_features(df,
-                                                 working_pressure_col if working_pressure_col != 'None' else None,
-                                                 advance_rate_col if advance_rate_col != 'None' else None,
-                                                 revolution_col if revolution_col != 'None' else None,
-                                                 n1,
-                                                 torque_constant)
 
                 # Get distance-related columns
                 distance_columns = get_distance_columns(df)
@@ -820,17 +795,23 @@ def main():
                     distance_columns = df.columns.tolist()  # Use all columns if no distance columns are detected
                 selected_distance = st.sidebar.selectbox("Select distance/chainage column", distance_columns)
 
-                                # Calculate derived features if possible
+                # Calculate derived features if possible
                 if working_pressure_col != 'None' and revolution_col != 'None':
                     df = calculate_derived_features(df,
-                                                    working_pressure_col if working_pressure_col != 'None' else None,
-                                                    revolution_col if revolution_col != 'None' else None,
+                                                    working_pressure_col,
+                                                    revolution_col,
                                                     n1,
                                                     torque_constant,
                                                     selected_distance)
 
                 # Let user select features for analysis
-                selected_features = st.sidebar.multiselect("Select features for analysis", df.columns)
+                all_features = df.columns.tolist()
+                if 'Penetration Rate [mm/rev]' in all_features:
+                    all_features.remove('Penetration Rate [mm/rev]')
+                if 'Average Speed (mm/min)' in all_features:
+                    all_features.remove('Average Speed (mm/min)')
+                selected_features = st.sidebar.multiselect("Select features for analysis", all_features)
+                selected_features.extend(['Penetration Rate [mm/rev]', 'Average Speed (mm/min)'])
 
                 # Check for time-related columns
                 time_column = get_time_column(df)
@@ -883,7 +864,7 @@ def main():
                         else:
                             st.warning("Please upload rock strength data and select a rock type to view the comparison.")
                     elif selected_option == 'Thrust Force Plots':
-                        create_thrust_force_plots(df, advance_rate_col)
+                        create_thrust_force_plots(df)
 
                 # Add download button for processed data
                 if st.sidebar.button("Download Processed Data"):
@@ -895,14 +876,12 @@ def main():
             else:
                 st.error("Error loading the data. Please check your file format.")
     except Exception as e:
-        st.error(f"An unexpected error occurred in the main function: {e}")
-
-    
+        st.error(f"An unexpected error occurred in the main function: {str(e)}")
 
     # Add footer
     st.markdown("---")
     st.markdown("© 2024 Herrenknecht AG. All rights reserved.")
     st.markdown("Created by Kursat Kilic - Geotechnical Digitalization")
-
+    
 if __name__ == "__main__":
     main()
