@@ -23,9 +23,6 @@ def clean_numeric_column(df, column_name):
 
 # Advanced rate calculation function
 def calculate_advance_rate_and_stats(df, distance_column, time_column):
-    """
-    Calculate advance rate statistics from distance and time data.
-    """
     try:
         if not all(col in df.columns for col in [distance_column, time_column]):
             raise ValueError(f"Required columns not found in DataFrame")
@@ -37,13 +34,10 @@ def calculate_advance_rate_and_stats(df, distance_column, time_column):
             weg = round(df[distance_column].iloc[0], 2)
             zeit = round(df[time_column].iloc[0], 2)
             
-        # Convert microseconds to minutes
         zeit = zeit * (0.000001 / 60)
         
-        # Calculate average speed
         average_speed = round(weg / zeit, 2) if zeit != 0 else 0
         
-        # Create results dictionary
         result = {
             "Total Distance (mm)": weg,
             "Total Time (min)": zeit,
@@ -58,9 +52,6 @@ def calculate_advance_rate_and_stats(df, distance_column, time_column):
 
 # Penetration rate calculation function
 def calculate_penetration_rate(row):
-    """
-    Calculate penetration rate from speed and revolution data.
-    """
     try:
         speed = row['Average Speed (mm/min)']
         revolution = row['Revolution [rpm]']
@@ -89,11 +80,7 @@ def calculate_torque(working_pressure, torque_constant, current_speed=None, n1=N
 
 # Function to calculate derived features
 def calculate_derived_features(df, working_pressure_col, advance_rate_col, revolution_col, n1, torque_constant):
-    """
-    Calculate derived features including advance rate, penetration rate, and torque.
-    """
     try:
-        # Calculate torque
         if working_pressure_col is not None:
             df["Calculated torque [kNm]"] = df[working_pressure_col] * torque_constant
             
@@ -101,7 +88,6 @@ def calculate_derived_features(df, working_pressure_col, advance_rate_col, revol
                 mask = df[advance_rate_col] >= n1
                 df.loc[mask, "Calculated torque [kNm]"] = (n1 / df.loc[mask, advance_rate_col]) * torque_constant * df.loc[mask, working_pressure_col]
         
-        # Calculate advance rate statistics
         time_column = get_time_column(df)
         distance_columns = get_distance_columns(df)
         distance_column = distance_columns[0] if distance_columns else None
@@ -111,7 +97,6 @@ def calculate_derived_features(df, working_pressure_col, advance_rate_col, revol
             if stats:
                 df['Average Speed (mm/min)'] = avg_speed
                 
-                # Calculate penetration rate if revolution data is available
                 if revolution_col is not None:
                     df["Penetration Rate [mm/rev]"] = df.apply(calculate_penetration_rate, axis=1)
         
@@ -184,6 +169,7 @@ def preprocess_rock_strength_data(df):
     except Exception as e:
         st.error(f"Error preprocessing rock strength data: {e}")
         return None
+
 
 # Updated function to create comparison chart for machine parameters vs rock strength
 def create_rock_strength_comparison_chart(machine_df, rock_df, rock_type, selected_features):
@@ -763,12 +749,12 @@ def calculate_penetration_rate(row):
         return np.nan
 
 
+# Main function
 def main():
     try:
         set_background_color()
         add_logo()
 
-        
         st.title("Herrenknecht Hard Rock Data Analysis App")
 
         # Sidebar for file upload and visualization selection
@@ -776,20 +762,15 @@ def main():
 
         uploaded_file = st.sidebar.file_uploader("Machine Data (CSV/Excel)", type=['csv', 'xlsx'])
         rock_strength_file = st.sidebar.file_uploader("Rock Strength Data (CSV/Excel)", type=['csv', 'xlsx'])
-        
 
         if uploaded_file is not None:
-            
             df = load_data(uploaded_file)
 
             if df is not None:
-                
                 # Identify special columns
-                
                 working_pressure_cols, revolution_cols, advance_rate_cols = identify_special_columns(df)
 
                 # Suggest columns based on keywords
-                
                 suggested_working_pressure = suggest_column(df, ['working pressure', 'arbeitsdruck', 'pressure', 'druck', 'arbdr', 'sr_arbdr','SR_Arbdr'])
                 suggested_revolution = suggest_column(df, ['revolution', 'drehzahl', 'rpm', 'drehz', 'sr_drehz', 'SR_Drehz'])
                 suggested_advance_rate = suggest_column(df, ['advance rate', 'vortrieb', 'vorschub','VTgeschw','geschw'])
@@ -811,13 +792,11 @@ def main():
                     suggested_advance_rate
                 )
 
-                
                 # Add input fields for n1 and torque_constant
                 n1 = st.sidebar.number_input("Enter n1 value (revolution 1/min)", min_value=0.0, value=1.0, step=0.1)
                 torque_constant = st.sidebar.number_input("Enter torque constant", min_value=0.0, value=1.0, step=0.1)
 
                 # Calculate derived features if possible
-                
                 if working_pressure_col != 'None' or (advance_rate_col != 'None' and revolution_col != 'None'):
                     df = calculate_derived_features(df,
                                                  working_pressure_col if working_pressure_col != 'None' else None,
@@ -866,42 +845,32 @@ def main():
                     st.warning("Please select at least one feature for analysis.")
                 else:
                     if selected_option == 'Correlation Heatmap':
-                        
                         create_correlation_heatmap(df, selected_features)
                     elif selected_option == 'Statistical Summary':
-                        
                         create_statistical_summary(df, selected_features)
                     elif selected_option == 'Features vs Time' and time_column:
-                        
                         create_features_vs_time(df, selected_features, time_column)
                     elif selected_option == 'Pressure Distribution' and time_column:
-                        
                         if working_pressure_col and working_pressure_col != 'None':
                             create_pressure_distribution_polar_plot(df, working_pressure_col, time_column)
                         else:
                             st.warning("Please select a valid working pressure column.")
                     elif selected_option == 'Parameters vs Chainage':
-                        
                         create_parameters_vs_chainage(df, selected_features, selected_distance)
                     elif selected_option == 'Box Plots':
-                        
                         create_multi_axis_box_plots(df, selected_features)
                     elif selected_option == 'Violin Plots':
-                        
                         create_multi_axis_violin_plots(df, selected_features)
                     elif selected_option == 'Rock Strength Comparison':
-                        
                         if rock_df is not None and 'rock_type' in locals():
                             create_rock_strength_comparison_chart(df, rock_df, rock_type, selected_features)
                         else:
                             st.warning("Please upload rock strength data and select a rock type to view the comparison.")
                     elif selected_option == 'Thrust Force Plots':
-                        
                         create_thrust_force_plots(df, advance_rate_col)
 
                 # Add download button for processed data
                 if st.sidebar.button("Download Processed Data"):
-                   
                     csv = df.to_csv(index=False)
                     b64 = base64.b64encode(csv.encode()).decode()
                     href = f'<a href="data:file/csv;base64,{b64}" download="processed_data.csv">Download Processed CSV File</a>'
