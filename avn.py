@@ -89,9 +89,6 @@ def calculate_torque(working_pressure, torque_constant, current_speed=None, n1=N
 
 # Function to calculate derived features
 def calculate_derived_features(df, working_pressure_col, advance_rate_col, revolution_col, n1, torque_constant):
-    """
-    Calculate derived features including advance rate, penetration rate, and torque.
-    """
     try:
         # Calculate torque
         if working_pressure_col is not None:
@@ -114,6 +111,10 @@ def calculate_derived_features(df, working_pressure_col, advance_rate_col, revol
                 # Calculate penetration rate if revolution data is available
                 if revolution_col is not None:
                     df["Penetration Rate [mm/rev]"] = df.apply(calculate_penetration_rate, axis=1)
+
+        # Ensure Penetration Rate column is added for visualization and analysis
+        if "Penetration Rate [mm/rev]" not in df.columns:
+            df["Penetration Rate [mm/rev]"] = df.apply(calculate_penetration_rate, axis=1)
         
         return df
         
@@ -705,17 +706,6 @@ def safe_selectbox(label, options, suggested_option):
 # Add these functions after the existing helper functions and before the visualization functions
 
 def calculate_advance_rate_and_stats(df, distance_column, time_column):
-    """
-    Calculate advance rate statistics from distance and time data.
-    
-    Parameters:
-    df (pandas.DataFrame): DataFrame containing distance and time columns
-    distance_column (str): Name of the distance column
-    time_column (str): Name of the time column
-    
-    Returns:
-    tuple: (dict of statistics, average_speed)
-    """
     try:
         if len(df) > 1:
             weg = round(df[distance_column].max() - df[distance_column].min(), 2)
