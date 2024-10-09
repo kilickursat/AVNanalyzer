@@ -240,7 +240,11 @@ def create_rock_strength_comparison_chart(machine_df, rock_df, rock_type, select
 
 # Updated function to visualize correlation heatmap with dynamic input
 def create_correlation_heatmap(df, selected_features):
-    # Filter out any selected features that are not in the dataframe
+    if len(selected_features) < 2:
+        st.warning("Please select at least two features for the correlation heatmap.")
+        return
+
+    # Only use the features that the user has explicitly selected
     available_features = [f for f in selected_features if f in df.columns]
     
     if len(available_features) < 2:
@@ -255,6 +259,7 @@ def create_correlation_heatmap(df, selected_features):
         st.pyplot(fig)
     except Exception as e:
         st.error(f"Error creating correlation heatmap: {str(e)}")
+
 
 # Updated function to create statistical summary
 def create_statistical_summary(df, selected_features, round_to=2):
@@ -817,16 +822,10 @@ def main():
                 all_features = df.columns.tolist()
                 
                 default_selected = []
-                if 'Penetration Rate [mm/rev]' in all_features:
-                    default_selected.append('Penetration Rate [mm/rev]')
-                if 'Average Speed (mm/min)' in all_features:
-                    default_selected.append('Average Speed (mm/min)')
-                
                 # Allow user to select features, with derived features pre-selected
                 selected_features = st.sidebar.multiselect(
                     "Select features for analysis",
                     all_features,
-                    default=default_selected
                 )
 
 
