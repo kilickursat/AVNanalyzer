@@ -650,6 +650,7 @@ def create_thrust_force_plots(df, advance_rate_col):
     try:
         thrust_force_col = suggest_column(df, ['thrust force', 'vorschubkraft', 'kraft','kraft_max','gesamtkraft','gesamtkraft_stz','gesamtkraft_vtp'])
         penetration_rate_col = 'Penetration Rate [mm/rev]'
+        average_speed_col = 'Average Speed (mm/min)'
 
         if thrust_force_col is None:
             st.warning("Thrust force column not found in the dataset.")
@@ -659,11 +660,9 @@ def create_thrust_force_plots(df, advance_rate_col):
             st.warning("Penetration Rate [mm/rev] column not found. Ensure it is calculated correctly.")
             return
 
-        if advance_rate_col not in df.columns:
-            st.warning(f"Selected Advance Rate column '{advance_rate_col}' not found.")
-            return
-
-        fig = make_subplots(rows=2, cols=1, subplot_titles=("Thrust Force vs Penetration Rate", "Thrust Force vs Advance Rate"))
+        fig = make_subplots(rows=3, cols=1, subplot_titles=("Thrust Force vs Penetration Rate", 
+                                                           "Thrust Force vs Average Speed", 
+                                                           "Thrust Force vs Selected Advance Rate"))
 
         # Thrust Force vs Penetration Rate
         fig.add_trace(go.Scatter(
@@ -674,24 +673,37 @@ def create_thrust_force_plots(df, advance_rate_col):
             marker=dict(color='blue', size=5)
         ), row=1, col=1)
 
-        # Thrust Force vs Advance Rate
-        fig.add_trace(go.Scatter(
-            x=df[advance_rate_col], 
-            y=df[thrust_force_col], 
-            mode='markers', 
-            name=f'Advance Rate ({advance_rate_col})',
-            marker=dict(color='green', size=5)
-        ), row=2, col=1)
+        # Thrust Force vs Average Speed
+        if average_speed_col in df.columns:
+            fig.add_trace(go.Scatter(
+                x=df[average_speed_col], 
+                y=df[thrust_force_col], 
+                mode='markers', 
+                name='Average Speed (mm/min)',
+                marker=dict(color='green', size=5)
+            ), row=2, col=1)
+        else:
+            st.warning("Average Speed (mm/min) column not found. Skipping this plot.")
 
-        fig.update_layout(
-            height=800, 
-            width=800, 
-            title_text="Thrust Force Relationships"
-        )
+        # Thrust Force vs Selected Advance Rate
+        if advance_rate_col in df.columns:
+            fig.add_trace(go.Scatter(
+                x=df[advance_rate_col], 
+                y=df[thrust_force_col], 
+                mode='markers', 
+                name=f'Selected Advance Rate ({advance_rate_col})',
+                marker=dict(color='red', size=5)
+            ), row=3, col=1)
+        else:
+            st.warning(f"Selected Advance Rate column '{advance_rate_col}' not found. Skipping this plot.")
+
+        fig.update_layout(height=1200, width=800, title_text="Thrust Force Relationships")
         fig.update_xaxes(title_text="Penetration Rate [mm/rev]", row=1, col=1)
-        fig.update_xaxes(title_text=f"Advance Rate ({advance_rate_col})", row=2, col=1)
+        fig.update_xaxes(title_text="Average Speed (mm/min)", row=2, col=1)
+        fig.update_xaxes(title_text=f"Selected Advance Rate ({advance_rate_col})", row=3, col=1)
         fig.update_yaxes(title_text="Thrust Force [kN]", row=1, col=1)
         fig.update_yaxes(title_text="Thrust Force [kN]", row=2, col=1)
+        fig.update_yaxes(title_text="Thrust Force [kN]", row=3, col=1)
 
         st.plotly_chart(fig)
     except Exception as e:
