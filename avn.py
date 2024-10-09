@@ -816,22 +816,16 @@ def main():
                     suggested_advance_rate
                 )
 
-            distance_columns = get_distance_columns(df)
-               if not distance_columns:
-                    distance_columns = df.columns.tolist()
-               selected_distance = st.sidebar.selectbox("Select distance/chainage column", distance_columns)
-
-                # Rename columns for visualization
-               df_viz = rename_columns(df.copy(), working_pressure_col, revolution_col, selected_distance, advance_rate_col)
-
-
-                n1 = st.sidebar.number_input("Enter n1 value (revolution 1/min)", min_value=0.0, value=1.0, step=0.1)
-                torque_constant = st.sidebar.number_input("Enter torque constant", min_value=0.0, value=1.0, step=0.1)
-
-            distance_columns = get_distance_columns(df)
+                distance_columns = get_distance_columns(df)
                 if not distance_columns:
                     distance_columns = df.columns.tolist()
                 selected_distance = st.sidebar.selectbox("Select distance/chainage column", distance_columns)
+
+                # Rename columns for visualization
+                df_viz = rename_columns(df.copy(), working_pressure_col, revolution_col, selected_distance, advance_rate_col)
+
+                n1 = st.sidebar.number_input("Enter n1 value (revolution 1/min)", min_value=0.0, value=1.0, step=0.1)
+                torque_constant = st.sidebar.number_input("Enter torque constant", min_value=0.0, value=1.0, step=0.1)
 
                 if working_pressure_col != 'None' and revolution_col != 'None':
                     df = calculate_derived_features(df, working_pressure_col, revolution_col, n1, torque_constant, selected_distance)
@@ -844,7 +838,6 @@ def main():
                     "Select features for analysis",
                     all_features,
                 )
-
 
                 time_column = get_time_column(df)
 
