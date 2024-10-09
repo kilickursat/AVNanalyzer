@@ -240,15 +240,21 @@ def create_rock_strength_comparison_chart(machine_df, rock_df, rock_type, select
 
 # Updated function to visualize correlation heatmap with dynamic input
 def create_correlation_heatmap(df, selected_features):
-    if len(selected_features) < 2:
-        st.warning("Please select at least two features for the correlation heatmap.")
+    # Filter out any selected features that are not in the dataframe
+    available_features = [f for f in selected_features if f in df.columns]
+    
+    if len(available_features) < 2:
+        st.warning("Please select at least two valid features for the correlation heatmap.")
         return
 
-    corr_matrix = df[selected_features].corr()
-    fig = sns.heatmap(corr_matrix, annot=True, cmap='coolwarm', vmin=-1, vmax=1, center=0)
-    fig.figure.set_size_inches(12, 10)
-    fig.set_title('Correlation Heatmap of Selected Parameters')
-    st.pyplot(fig.figure)
+    try:
+        corr_matrix = df[available_features].corr()
+        fig, ax = plt.subplots(figsize=(12, 10))
+        sns.heatmap(corr_matrix, annot=True, cmap='coolwarm', vmin=-1, vmax=1, center=0, ax=ax)
+        ax.set_title('Correlation Heatmap of Selected Parameters')
+        st.pyplot(fig)
+    except Exception as e:
+        st.error(f"Error creating correlation heatmap: {str(e)}")
 
 # Updated function to create statistical summary
 def create_statistical_summary(df, selected_features, round_to=2):
@@ -797,11 +803,19 @@ def main():
                     df = calculate_derived_features(df, working_pressure_col, revolution_col, n1, torque_constant, selected_distance)
 
                 all_features = df.columns.tolist()
-                selected_features = st.sidebar.multiselect("Select features for analysis", all_features)
-                if 'Penetration Rate [mm/rev]' in df.columns and 'Penetration Rate [mm/rev]' not in selected_features:
-                    selected_features.append('Penetration Rate [mm/rev]')
-                if 'Average Speed (mm/min)' in df.columns and 'Average Speed (mm/min)' not in selected_features:
-                    selected_features.append('Average Speed (mm/min)')
+                
+                   default_selected = []
+                if 'Penetration Rate [mm/rev]' in all_features:
+                    default_selected.append('Penetration Rate [mm/rev]')
+                if 'Average Speed (mm/min)' in all_features:
+                    default_selected.append('Average Speed (mm/min)')
+                
+                # Allow user to select features, with derived features pre-selected
+                selected_features = st.sidebar.multiselect(
+                    "Select features for analysis",
+                    all_features,
+                    default=default_selected
+                )
 
 
                 time_column = get_time_column(df)
