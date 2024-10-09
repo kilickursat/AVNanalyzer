@@ -37,7 +37,6 @@ def calculate_torque(working_pressure, torque_constant, current_speed=None, n1=N
 
     return torque
     
-# Function to calculate derived features
 def calculate_derived_features(df, working_pressure_col, advance_rate_col, revolution_col, n1, torque_constant):
     """
     Calculate derived features based on input columns and parameters.
@@ -52,12 +51,19 @@ def calculate_derived_features(df, working_pressure_col, advance_rate_col, revol
                 mask = df[advance_rate_col] >= n1
                 df.loc[mask, "Calculated torque [kNm]"] = (n1 / df.loc[mask, advance_rate_col]) * torque_constant * df.loc[mask, working_pressure_col]
         
-        # Calculate "Penetration Rate [mm/rev]" as Advance Rate / Revolution
-        if advance_rate_col is not None and revolution_col is not None:
-            df["Penetration Rate [mm/rev]"] = df[advance_rate_col] / df[revolution_col]
-        else:
-            df["Penetration Rate [mm/rev]"] = np.nan  # Assign NaN if columns are not selected
-
+        # Calculate advance rate statistics if required columns are available
+        time_column = get_time_column(df)
+        distance_column = get_distance_columns(df)[0] if get_distance_columns(df) else None
+        
+        if time_column and distance_column:
+            stats, avg_speed = calculate_advance_rate_and_stats(df, distance_column, time_column)
+            if stats:
+                df['Average Speed (mm/min)'] = avg_speed
+        
+        # Calculate "Penetration Rate [mm/rev]"
+        if 'Average Speed (mm/min)' in df.columns and revolution_col is not None:
+            df["Penetration Rate [mm/rev]"] = df.apply(calculate_penetration_rate, axis=1)
+        
         return df
     except Exception as e:
         st.error(f"Error calculating derived features: {e}")
@@ -615,6 +621,66 @@ def safe_selectbox(label, options, suggested_option):
     except ValueError:
         index = 0  # Default to 'None' if suggested_option is not in options
     return st.sidebar.selectbox(label, options, index=index)
+
+# Add these functions after the existing helper functions and before the visualization functions
+
+def calculate_advance_rate_and_stats(df, distance_column, time_column):
+    """
+    Calculate advance rate statistics from distance and time data.
+    
+    Parameters:
+    df (pandas.DataFrame): DataFrame containing distance and time columns
+    distance_column (str): Name of the distance column
+    time_column (str): Name of the time column
+    
+    Returns:
+    tuple: (dict of statistics, average_speed)
+    """
+    try:
+        if len(df) > 1:
+            weg = round(df[distance_column].max() - df[distance_column].min(), 2)
+            zeit = round(df[time_column].max() - df[time_column].min(), 2)
+        else:
+            weg = df[distance_column].iloc[0]
+            zeit = df[time_column].iloc[0]
+            
+        zeit = zeit * (0.000001 / 60)  # Convert microseconds to minutes
+        average_speed = round(weg / zeit, 2) if zeit != 0 else 0
+        
+        result = {
+            "Total Distance (mm)": weg,
+            "Total Time (min)": zeit,
+            "Average Speed (mm/min)": average_speed
+        }
+        
+        return result, average_speed
+    except Exception as e:
+        st.error(f"Error calculating advance rate stats: {e}")
+        return None, 0
+
+def calculate_penetration_rate(row):
+    """
+    Calculate penetration rate from speed and revolution data.
+    
+    Parameters:
+    row (pandas.Series): Row containing 'Average Speed (mm/min)' and 'Revolution [rpm]' values
+    
+    Returns:
+    float: Penetration rate value
+    """
+    try:
+        speed = row['Average Speed (mm/min)']
+        revolution = row['Revolution [rpm]']
+        
+        if pd.isna(speed) or pd.isna(revolution):
+            return np.nan
+        elif revolution == 0:
+            return np.inf if speed != 0 else 0
+        else:
+            return round(speed / revolution, 4)
+    except Exception as e:
+        st.error(f"Error calculating penetration rate: {e}")
+        return np.nan
 
 
 def main():
