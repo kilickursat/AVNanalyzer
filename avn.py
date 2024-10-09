@@ -428,6 +428,16 @@ def create_pressure_distribution_polar_plot(df, pressure_column, time_column):
     except Exception as e:
         st.error(f"Error creating pressure distribution polar plot: {e}")
 
+def rename_columns(df, working_pressure_col, revolution_col, distance_col, advance_rate_col):
+    column_mapping = {
+        working_pressure_col: 'Working pressure [bar]',
+        revolution_col: 'Revolution [rpm]',
+        distance_col: 'Chainage [mm]',
+        advance_rate_col: 'Advance rate [mm/min]'
+    }
+    return df.rename(columns=column_mapping)
+
+
 def create_parameters_vs_chainage(df, selected_features, chainage_column):
     if not selected_features:
         st.warning("Please select at least one feature for the chainage plot.")
@@ -461,6 +471,8 @@ def create_parameters_vs_chainage(df, selected_features, chainage_column):
                 feature_name = 'Revolution [rpm]'
             elif any(keyword in feature.lower() for keyword in ['working pressure', 'arbeitsdruck', 'pressure', 'druck', 'arbdr', 'sr_arbdr', 'SR_Arbdr']):
                 feature_name = 'Working pressure [bar]'
+            elif any(keyword in feature.lower() for keyword in ['distance', 'length', 'travel', 'chainage', 'Tunnellänge Neu', 'Tunnellänge', 'Weg_mm_Z', 'VTP_Weg']):
+                feature_name = 'Chainage [mm]'
 
             fig.add_trace(
                 go.Scatter(
@@ -481,9 +493,9 @@ def create_parameters_vs_chainage(df, selected_features, chainage_column):
 
     # Update layout with larger dimensions and better spacing
     fig.update_layout(
-        height=400 * len(selected_features),  # Increased height per subplot
+        height=min(400 * len(selected_features), 800),  # Cap the height at 800px
         width=1200,  # Increased overall width
-        title_text=f'Parameters vs {chainage_column}',
+        title_text=f'Parameters vs Chainage',
         showlegend=True,
         legend=dict(
             orientation="h",
@@ -496,14 +508,10 @@ def create_parameters_vs_chainage(df, selected_features, chainage_column):
     )
 
     # Update x-axis title only for the bottom subplot
-    fig.update_xaxes(title_text=chainage_column, row=len(selected_features), col=1)
+    fig.update_xaxes(title_text='Chainage [mm]', row=len(selected_features), col=1)
 
     st.plotly_chart(fig, use_container_width=True)
 
-# Function to get distance-related columns
-def get_distance_columns(df):
-    distance_keywords = ['distance', 'length', 'travel', 'chainage', 'Tunnellänge Neu', 'Tunnellänge','Weg_mm_Z','VTP_Weg']
-    return [col for col in df.columns if any(keyword in col.lower() for keyword in distance_keywords)]
 
 # Updated function to create multi-axis box plots with additional features
 def create_multi_axis_box_plots(df, selected_features):
@@ -808,6 +816,15 @@ def main():
                     suggested_advance_rate
                 )
 
+               distance_columns = get_distance_columns(df)
+               if not distance_columns:
+                    distance_columns = df.columns.tolist()
+               selected_distance = st.sidebar.selectbox("Select distance/chainage column", distance_columns)
+
+                # Rename columns for visualization
+               df_viz = rename_columns(df.copy(), working_pressure_col, revolution_col, selected_distance, advance_rate_col)
+
+
                 n1 = st.sidebar.number_input("Enter n1 value (revolution 1/min)", min_value=0.0, value=1.0, step=0.1)
                 torque_constant = st.sidebar.number_input("Enter torque constant", min_value=0.0, value=1.0, step=0.1)
 
@@ -863,7 +880,7 @@ def main():
                         else:
                             st.warning("Please select a valid working pressure column.")
                     elif selected_option == 'Parameters vs Chainage':
-                        create_parameters_vs_chainage(df, selected_features, selected_distance)
+                        create_parameters_vs_chainage(df_viz, selected_features, 'Chainage [mm]')
                     elif selected_option == 'Box Plots':
                         create_multi_axis_box_plots(df, selected_features)
                     elif selected_option == 'Violin Plots':
