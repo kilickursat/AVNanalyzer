@@ -816,7 +816,7 @@ def main():
                     suggested_advance_rate
                 )
 
-               distance_columns = get_distance_columns(df)
+            distance_columns = get_distance_columns(df)
                if not distance_columns:
                     distance_columns = df.columns.tolist()
                selected_distance = st.sidebar.selectbox("Select distance/chainage column", distance_columns)
@@ -828,7 +828,7 @@ def main():
                 n1 = st.sidebar.number_input("Enter n1 value (revolution 1/min)", min_value=0.0, value=1.0, step=0.1)
                 torque_constant = st.sidebar.number_input("Enter torque constant", min_value=0.0, value=1.0, step=0.1)
 
-                distance_columns = get_distance_columns(df)
+            distance_columns = get_distance_columns(df)
                 if not distance_columns:
                     distance_columns = df.columns.tolist()
                 selected_distance = st.sidebar.selectbox("Select distance/chainage column", distance_columns)
