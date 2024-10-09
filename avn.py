@@ -640,11 +640,10 @@ def get_time_column(df):
             return col
     return None
 
-def create_thrust_force_plots(df):
+def create_thrust_force_plots(df, advance_rate_col):
     try:
         thrust_force_col = suggest_column(df, ['thrust force', 'vorschubkraft', 'kraft','kraft_max','gesamtkraft','gesamtkraft_stz','gesamtkraft_vtp'])
         penetration_rate_col = 'Penetration Rate [mm/rev]'
-        average_speed_col = 'Average Speed (mm/min)'
 
         if thrust_force_col is None:
             st.warning("Thrust force column not found in the dataset.")
@@ -755,7 +754,6 @@ def main():
 
         st.title("Herrenknecht Hard Rock Data Analysis App")
 
-        # Sidebar for file upload and visualization selection
         st.sidebar.header("Data Upload & Analysis")
 
         uploaded_file = st.sidebar.file_uploader("Machine Data (CSV/Excel)", type=['csv', 'xlsx'])
@@ -765,14 +763,12 @@ def main():
             df = load_data(uploaded_file)
 
             if df is not None:
-                # Identify special columns
                 working_pressure_cols, revolution_cols, advance_rate_cols = identify_special_columns(df)
 
-                # Suggest columns based on keywords
                 suggested_working_pressure = suggest_column(df, ['working pressure', 'arbeitsdruck', 'pressure', 'druck', 'arbdr', 'sr_arbdr','SR_Arbdr'])
                 suggested_revolution = suggest_column(df, ['revolution', 'drehzahl', 'rpm', 'drehz', 'sr_drehz', 'SR_Drehz'])
+                suggested_advance_rate = suggest_column(df, ['advance rate', 'vortrieb', 'vorschub','VTgeschw','geschw'])
 
-                # Let user select working pressure and revolution columns
                 working_pressure_col = safe_selectbox(
                     "Select Working Pressure Column",
                     ['None'] + working_pressure_cols,
@@ -783,29 +779,23 @@ def main():
                     ['None'] + revolution_cols,
                     suggested_revolution
                 )
+                advance_rate_col = safe_selectbox(
+                    "Select Advance Rate Column",
+                    ['None'] + advance_rate_cols,
+                    suggested_advance_rate
+                )
 
-                # Add input fields for n1 and torque_constant
                 n1 = st.sidebar.number_input("Enter n1 value (revolution 1/min)", min_value=0.0, value=1.0, step=0.1)
                 torque_constant = st.sidebar.number_input("Enter torque constant", min_value=0.0, value=1.0, step=0.1)
 
-                # Get distance-related columns
                 distance_columns = get_distance_columns(df)
-
-                # Force distance column selection
                 if not distance_columns:
-                    distance_columns = df.columns.tolist()  # Use all columns if no distance columns are detected
+                    distance_columns = df.columns.tolist()
                 selected_distance = st.sidebar.selectbox("Select distance/chainage column", distance_columns)
 
-                # Calculate derived features if possible
                 if working_pressure_col != 'None' and revolution_col != 'None':
-                    df = calculate_derived_features(df,
-                                                    working_pressure_col,
-                                                    revolution_col,
-                                                    n1,
-                                                    torque_constant,
-                                                    selected_distance)
+                    df = calculate_derived_features(df, working_pressure_col, revolution_col, n1, torque_constant, selected_distance)
 
-                # Let user select features for analysis
                 all_features = df.columns.tolist()
                 if 'Penetration Rate [mm/rev]' in all_features:
                     all_features.remove('Penetration Rate [mm/rev]')
@@ -814,21 +804,16 @@ def main():
                 selected_features = st.sidebar.multiselect("Select features for analysis", all_features)
                 selected_features.extend(['Penetration Rate [mm/rev]', 'Average Speed (mm/min)'])
 
-                # Check for time-related columns
                 time_column = get_time_column(df)
 
-                # Visualization selection
                 options = ['Correlation Heatmap', 'Statistical Summary', 'Parameters vs Chainage', 'Box Plots', 'Violin Plots', 'Thrust Force Plots']
-
                 if time_column:
                     options.extend(['Features vs Time', 'Pressure Distribution'])
-
                 if rock_strength_file:
                     options.append('Rock Strength Comparison')
 
                 selected_option = st.sidebar.radio("Choose visualization", options)
 
-                # Rock strength data processing
                 rock_df = None
                 if rock_strength_file:
                     rock_strength_data = read_rock_strength_data(rock_strength_file)
@@ -836,7 +821,6 @@ def main():
                         rock_df = preprocess_rock_strength_data(rock_strength_data)
                         rock_type = st.sidebar.selectbox("Select Rock Type", rock_df.index)
 
-                # Main content area - Visualization based on user selection
                 st.subheader(f"Visualization: {selected_option}")
 
                 if not selected_features and selected_option not in ['Pressure Distribution', 'Thrust Force Plots']:
@@ -865,9 +849,11 @@ def main():
                         else:
                             st.warning("Please upload rock strength data and select a rock type to view the comparison.")
                     elif selected_option == 'Thrust Force Plots':
-                        create_thrust_force_plots(df)
+                        if advance_rate_col and advance_rate_col != 'None':
+                            create_thrust_force_plots(df, advance_rate_col)
+                        else:
+                            st.warning("Please select a valid advance rate column for Thrust Force Plots.")
 
-                # Add download button for processed data
                 if st.sidebar.button("Download Processed Data"):
                     csv = df.to_csv(index=False)
                     b64 = base64.b64encode(csv.encode()).decode()
@@ -879,7 +865,6 @@ def main():
     except Exception as e:
         st.error(f"An unexpected error occurred in the main function: {str(e)}")
 
-    # Add footer
     st.markdown("---")
     st.markdown("© 2024 Herrenknecht AG. All rights reserved.")
     st.markdown("Created by Kursat Kilic - Geotechnical Digitalization")
