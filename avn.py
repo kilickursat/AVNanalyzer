@@ -797,12 +797,12 @@ def main():
                     df = calculate_derived_features(df, working_pressure_col, revolution_col, n1, torque_constant, selected_distance)
 
                 all_features = df.columns.tolist()
-                if 'Penetration Rate [mm/rev]' in all_features:
-                    all_features.remove('Penetration Rate [mm/rev]')
-                if 'Average Speed (mm/min)' in all_features:
-                    all_features.remove('Average Speed (mm/min)')
                 selected_features = st.sidebar.multiselect("Select features for analysis", all_features)
-                selected_features.extend(['Penetration Rate [mm/rev]', 'Average Speed (mm/min)'])
+                if 'Penetration Rate [mm/rev]' in df.columns and 'Penetration Rate [mm/rev]' not in selected_features:
+                    selected_features.append('Penetration Rate [mm/rev]')
+                if 'Average Speed (mm/min)' in df.columns and 'Average Speed (mm/min)' not in selected_features:
+                    selected_features.append('Average Speed (mm/min)')
+
 
                 time_column = get_time_column(df)
 
