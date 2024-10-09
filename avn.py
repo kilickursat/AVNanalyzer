@@ -79,32 +79,39 @@ def calculate_torque(working_pressure, torque_constant, current_speed=None, n1=N
     return torque
 
 # Function to calculate derived features
-def calculate_derived_features(df, working_pressure_col, advance_rate_col, revolution_col, n1, torque_constant):
+def calculate_derived_features(df, working_pressure_col, revolution_col, n1, torque_constant, selected_distance):
     try:
-        if working_pressure_col is not None:
-            df["Calculated torque [kNm]"] = df[working_pressure_col] * torque_constant
-            
-            if advance_rate_col is not None:
-                mask = df[advance_rate_col] >= n1
-                df.loc[mask, "Calculated torque [kNm]"] = (n1 / df.loc[mask, advance_rate_col]) * torque_constant * df.loc[mask, working_pressure_col]
+        if working_pressure_col is not None and revolution_col is not None:
+            def calculate_torque_wrapper(row):
+                working_pressure = row[working_pressure_col]
+                current_speed = row[revolution_col]
+
+                if current_speed < n1:
+                    torque = working_pressure * torque_constant
+                else:
+                    torque = (n1 / current_speed) * torque_constant * working_pressure
+
+                return round(torque, 2)
+
+            df['Calculated torque [kNm]'] = df.apply(calculate_torque_wrapper, axis=1)
         
+        # Calculate advance rate and average speed
+        distance_column = selected_distance
         time_column = get_time_column(df)
-        distance_columns = get_distance_columns(df)
-        distance_column = distance_columns[0] if distance_columns else None
         
-        if time_column and distance_column:
-            stats, avg_speed = calculate_advance_rate_and_stats(df, distance_column, time_column)
-            if stats:
-                df['Average Speed (mm/min)'] = avg_speed
-                
-                if revolution_col is not None:
-                    df["Penetration Rate [mm/rev]"] = df.apply(calculate_penetration_rate, axis=1)
+        if distance_column in df.columns and time_column:
+            result, average_speed = calculate_advance_rate_and_stats(df, distance_column, time_column)
+            df['Average Speed (mm/min)'] = average_speed
+            
+            if revolution_col is not None:
+                df['Penetration Rate [mm/rev]'] = df.apply(calculate_penetration_rate, axis=1)
         
         return df
         
     except Exception as e:
         st.error(f"Error calculating derived features: {e}")
         return df
+
 
 # Helper functions for column identification
 def identify_special_columns(df):
@@ -812,6 +819,15 @@ def main():
                 if not distance_columns:
                     distance_columns = df.columns.tolist()  # Use all columns if no distance columns are detected
                 selected_distance = st.sidebar.selectbox("Select distance/chainage column", distance_columns)
+
+                                # Calculate derived features if possible
+                if working_pressure_col != 'None' and revolution_col != 'None':
+                    df = calculate_derived_features(df,
+                                                    working_pressure_col if working_pressure_col != 'None' else None,
+                                                    revolution_col if revolution_col != 'None' else None,
+                                                    n1,
+                                                    torque_constant,
+                                                    selected_distance)
 
                 # Let user select features for analysis
                 selected_features = st.sidebar.multiselect("Select features for analysis", df.columns)
