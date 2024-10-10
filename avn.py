@@ -818,18 +818,17 @@ def main():
                     distance_columns = df.columns.tolist()
                 selected_distance = st.sidebar.selectbox("Select distance/chainage column", distance_columns)
 
-                # Rename columns for visualization
-                df_viz = rename_columns(df.copy(), working_pressure_col, revolution_col, selected_distance, advance_rate_col)
-
                 n1 = st.sidebar.number_input("Enter n1 value (revolution 1/min)", min_value=0.0, value=1.0, step=0.1)
                 torque_constant = st.sidebar.number_input("Enter torque constant", min_value=0.0, value=1.0, step=0.1)
 
                 if working_pressure_col != 'None' and revolution_col != 'None':
                     df = calculate_derived_features(df, working_pressure_col, revolution_col, n1, torque_constant, selected_distance)
 
-                all_features = df.columns.tolist()
+                # **Move rename_columns after calculate_derived_features**
+                df_viz = rename_columns(df.copy(), working_pressure_col, revolution_col, selected_distance, advance_rate_col)
+
+                all_features = df_viz.columns.tolist()
                 
-                default_selected = []
                 # Allow user to select features, with derived features pre-selected
                 selected_features = st.sidebar.multiselect(
                     "Select features for analysis",
@@ -837,7 +836,7 @@ def main():
                     default=['Calculated torque [kNm]', 'Average Speed (mm/min)', 'Penetration Rate [mm/rev]']
                 )
 
-                time_column = get_time_column(df)
+                time_column = get_time_column(df_viz)
 
                 options = ['Correlation Heatmap', 'Statistical Summary', 'Parameters vs Chainage', 'Box Plots', 'Violin Plots', 'Thrust Force Plots']
                 if time_column:
@@ -860,35 +859,35 @@ def main():
                     st.warning("Please select at least one feature for analysis.")
                 else:
                     if selected_option == 'Correlation Heatmap':
-                        create_correlation_heatmap(df, selected_features)
+                        create_correlation_heatmap(df_viz, selected_features)
                     elif selected_option == 'Statistical Summary':
-                        create_statistical_summary(df, selected_features)
+                        create_statistical_summary(df_viz, selected_features)
                     elif selected_option == 'Features vs Time' and time_column:
-                        create_features_vs_time(df, selected_features, time_column)
+                        create_features_vs_time(df_viz, selected_features, time_column)
                     elif selected_option == 'Pressure Distribution' and time_column:
                         if working_pressure_col and working_pressure_col != 'None':
-                            create_pressure_distribution_polar_plot(df, working_pressure_col, time_column)
+                            create_pressure_distribution_polar_plot(df_viz, working_pressure_col, time_column)
                         else:
                             st.warning("Please select a valid working pressure column.")
                     elif selected_option == 'Parameters vs Chainage':
                         create_parameters_vs_chainage(df_viz, selected_features, 'Chainage [mm]')
                     elif selected_option == 'Box Plots':
-                        create_multi_axis_box_plots(df, selected_features)
+                        create_multi_axis_box_plots(df_viz, selected_features)
                     elif selected_option == 'Violin Plots':
-                        create_multi_axis_violin_plots(df, selected_features)
+                        create_multi_axis_violin_plots(df_viz, selected_features)
                     elif selected_option == 'Rock Strength Comparison':
                         if rock_df is not None and 'rock_type' in locals():
-                            create_rock_strength_comparison_chart(df, rock_df, rock_type, selected_features)
+                            create_rock_strength_comparison_chart(df_viz, rock_df, rock_type, selected_features)
                         else:
                             st.warning("Please upload rock strength data and select a rock type to view the comparison.")
                     elif selected_option == 'Thrust Force Plots':
                         if advance_rate_col and advance_rate_col != 'None':
-                            create_thrust_force_plots(df, advance_rate_col)
+                            create_thrust_force_plots(df_viz, advance_rate_col)
                         else:
                             st.warning("Please select a valid advance rate column for Thrust Force Plots.")
 
                 if st.sidebar.button("Download Processed Data"):
-                    csv = df.to_csv(index=False)
+                    csv = df_viz.to_csv(index=False)
                     b64 = base64.b64encode(csv.encode()).decode()
                     href = f'<a href="data:file/csv;base64,{b64}" download="processed_data.csv">Download Processed CSV File</a>'
                     st.sidebar.markdown(href, unsafe_allow_html=True)
