@@ -25,7 +25,7 @@ def clean_numeric_column(df, column_name):
 def calculate_advance_rate_and_stats(df, distance_column, time_column):
     try:
         if not all(col in df.columns for col in [distance_column, time_column]):
-            raise ValueError(f"Required columns not found in DataFrame")
+            raise ValueError(f"Required columns '{distance_column}' and/or '{time_column}' not found in DataFrame")
             
         if len(df) > 1:
             weg = round(df[distance_column].max() - df[distance_column].min(), 2)
@@ -106,14 +106,20 @@ def calculate_derived_features(df, working_pressure_col, revolution_col, n1, tor
         time_column = get_time_column(df)
         
         if distance_column in df.columns and time_column:
+            # Convert distance_column to numeric
+            df = clean_numeric_column(df, distance_column)
+            # Convert time_column to numeric
+            df = clean_numeric_column(df, time_column)
+
             result, average_speed = calculate_advance_rate_and_stats(df, distance_column, time_column)
-            df['Average Speed (mm/min)'] = average_speed
-            
-            if revolution_col is not None:
-                df['Penetration Rate [mm/rev]'] = df.apply(lambda row: calculate_penetration_rate(row, revolution_col), axis=1)
+            if result:
+                df['Average Speed (mm/min)'] = average_speed
+                
+                if revolution_col is not None and revolution_col != 'None':
+                    df['Penetration Rate [mm/rev]'] = df.apply(lambda row: calculate_penetration_rate(row, revolution_col), axis=1)
         
         return df
-        
+            
     except Exception as e:
         st.error(f"Error calculating derived features: {str(e)}")
         return df
@@ -431,7 +437,6 @@ def create_pressure_distribution_polar_plot(df, pressure_column, time_column):
     except Exception as e:
         st.error(f"Error creating pressure distribution polar plot: {e}")
 
-# Function to rename columns for visualization
 def rename_columns(df, working_pressure_col, revolution_col, distance_col, advance_rate_col):
     column_mapping = {}
     if working_pressure_col != 'None':
@@ -846,6 +851,6 @@ def main():
     st.markdown("---")
     st.markdown("© 2024 Herrenknecht AG. All rights reserved.")
     st.markdown("Created by Kursat Kilic - Geotechnical Digitalization")
-
+    
 if __name__ == "__main__":
     main()
