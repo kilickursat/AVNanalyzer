@@ -438,6 +438,7 @@ def rename_columns(df, working_pressure_col, revolution_col, distance_col, advan
     return df.rename(columns=column_mapping)
 
 
+
 def create_parameters_vs_chainage(df, selected_features, chainage_column):
     if not selected_features:
         st.warning("Please select at least one feature for the chainage plot.")
@@ -454,48 +455,42 @@ def create_parameters_vs_chainage(df, selected_features, chainage_column):
     colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEEAD', '#D4A5A5',
               '#9B6B6B', '#E9967A', '#4682B4', '#6B8E23']  # Expanded color palette
 
-    fig = make_subplots(rows=len(selected_features), cols=1,
+    available_features = [f for f in selected_features if f in df.columns]
+    
+    if not available_features:
+        st.warning("None of the selected features are available in the dataset.")
+        return
+
+    fig = make_subplots(rows=len(available_features), cols=1,
                         shared_xaxes=True,
-                        subplot_titles=selected_features,
+                        subplot_titles=available_features,
                         vertical_spacing=0.05)  # Reduce spacing between subplots
 
-    for i, feature in enumerate(selected_features, start=1):
-        if feature in df.columns:
-            try:
-                y_data = df[feature]
-                feature_name = feature
-             # Replace sensor names with standardized names
-                if any(keyword in feature.lower() for keyword in ['advance rate', 'vortrieb', 'vorschub', 'VTgeschw', 'geschw']):
-                    feature_name = 'Advance rate [mm/min]'
-                elif any(keyword in feature.lower() for keyword in ['revolution', 'drehzahl', 'rpm', 'drehz', 'sr_drehz', 'SR_Drehz']):
-                    feature_name = 'Revolution [rpm]'
-                elif any(keyword in feature.lower() for keyword in ['working pressure', 'arbeitsdruck', 'pressure', 'druck', 'arbdr', 'sr_arbdr', 'SR_Arbdr']):
-                    feature_name = 'Working pressure [bar]'
-                elif any(keyword in feature.lower() for keyword in ['distance', 'length', 'travel', 'chainage', 'Tunnellänge Neu', 'Tunnellänge', 'Weg_mm_Z', 'VTP_Weg']):
-                    feature_name = 'Chainage [mm]'
+    for i, feature in enumerate(available_features, start=1):
+        try:
+            y_data = df[feature]
+            feature_name = feature
 
-                fig.add_trace(
-                    go.Scatter(
-                        x=df[chainage_column],
-                        y=y_data,
-                        mode='lines',
-                        name=feature_name,
-                        line=dict(color=colors[i % len(colors)], width=2)
-                    ),
-                    row=i,
-                    col=1
-                )
+            fig.add_trace(
+                go.Scatter(
+                    x=df[chainage_column],
+                    y=y_data,
+                    mode='lines',
+                    name=feature_name,
+                    line=dict(color=colors[i % len(colors)], width=2)
+                ),
+                row=i,
+                col=1
+            )
 
-                # Update y-axis titles
-                fig.update_yaxes(title_text=feature_name, row=i, col=1)
-            except Exception as e:
-                st.warning(f"Error plotting feature '{feature}': {e}")
-        else:
-            st.warning(f"Feature '{feature}' not found in the dataset. Skipping this feature.")
+            # Update y-axis titles
+            fig.update_yaxes(title_text=feature_name, row=i, col=1)
+        except Exception as e:
+            st.warning(f"Error plotting feature '{feature}': {e}")
 
     # Update layout with larger dimensions and better spacing
     fig.update_layout(
-        height=min(400 * len(selected_features), 800),  # Cap the height at 800px
+        height=min(400 * len(available_features), 800),  # Cap the height at 800px
         width=1200,  # Increased overall width
         title_text=f'Parameters vs Chainage',
         showlegend=True,
@@ -510,7 +505,7 @@ def create_parameters_vs_chainage(df, selected_features, chainage_column):
     )
 
     # Update x-axis title only for the bottom subplot
-    fig.update_xaxes(title_text='Chainage [mm]', row=len(selected_features), col=1)
+    fig.update_xaxes(title_text='Chainage [mm]', row=len(available_features), col=1)
 
     st.plotly_chart(fig, use_container_width=True)
 
@@ -839,6 +834,7 @@ def main():
                 selected_features = st.sidebar.multiselect(
                     "Select features for analysis",
                     all_features,
+                    default=['Calculated torque [kNm]', 'Average Speed (mm/min)', 'Penetration Rate [mm/rev]']
                 )
 
                 time_column = get_time_column(df)
