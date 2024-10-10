@@ -460,36 +460,38 @@ def create_parameters_vs_chainage(df, selected_features, chainage_column):
                         vertical_spacing=0.05)  # Reduce spacing between subplots
 
     for i, feature in enumerate(selected_features, start=1):
-        try:
-            y_data = df[feature]
-            feature_name = feature
+        if feature in df.columns:
+            try:
+                y_data = df[feature]
+                feature_name = feature
+             # Replace sensor names with standardized names
+                if any(keyword in feature.lower() for keyword in ['advance rate', 'vortrieb', 'vorschub', 'VTgeschw', 'geschw']):
+                    feature_name = 'Advance rate [mm/min]'
+                elif any(keyword in feature.lower() for keyword in ['revolution', 'drehzahl', 'rpm', 'drehz', 'sr_drehz', 'SR_Drehz']):
+                    feature_name = 'Revolution [rpm]'
+                elif any(keyword in feature.lower() for keyword in ['working pressure', 'arbeitsdruck', 'pressure', 'druck', 'arbdr', 'sr_arbdr', 'SR_Arbdr']):
+                    feature_name = 'Working pressure [bar]'
+                elif any(keyword in feature.lower() for keyword in ['distance', 'length', 'travel', 'chainage', 'Tunnellänge Neu', 'Tunnellänge', 'Weg_mm_Z', 'VTP_Weg']):
+                    feature_name = 'Chainage [mm]'
 
-            # Replace sensor names with standardized names
-            if any(keyword in feature.lower() for keyword in ['advance rate', 'vortrieb', 'vorschub', 'VTgeschw', 'geschw']):
-                feature_name = 'Advance rate [mm/min]'
-            elif any(keyword in feature.lower() for keyword in ['revolution', 'drehzahl', 'rpm', 'drehz', 'sr_drehz', 'SR_Drehz']):
-                feature_name = 'Revolution [rpm]'
-            elif any(keyword in feature.lower() for keyword in ['working pressure', 'arbeitsdruck', 'pressure', 'druck', 'arbdr', 'sr_arbdr', 'SR_Arbdr']):
-                feature_name = 'Working pressure [bar]'
-            elif any(keyword in feature.lower() for keyword in ['distance', 'length', 'travel', 'chainage', 'Tunnellänge Neu', 'Tunnellänge', 'Weg_mm_Z', 'VTP_Weg']):
-                feature_name = 'Chainage [mm]'
+                fig.add_trace(
+                    go.Scatter(
+                        x=df[chainage_column],
+                        y=y_data,
+                        mode='lines',
+                        name=feature_name,
+                        line=dict(color=colors[i % len(colors)], width=2)
+                    ),
+                    row=i,
+                    col=1
+                )
 
-            fig.add_trace(
-                go.Scatter(
-                    x=df[chainage_column],
-                    y=y_data,
-                    mode='lines',
-                    name=feature_name,
-                    line=dict(color=colors[i % len(colors)], width=2)
-                ),
-                row=i,
-                col=1
-            )
-
-            # Update y-axis titles
-            fig.update_yaxes(title_text=feature_name, row=i, col=1)
-        except Exception as e:
-            st.error(f"Error plotting feature '{feature}': {e}")
+                # Update y-axis titles
+                fig.update_yaxes(title_text=feature_name, row=i, col=1)
+            except Exception as e:
+                st.warning(f"Error plotting feature '{feature}': {e}")
+        else:
+            st.warning(f"Feature '{feature}' not found in the dataset. Skipping this feature.")
 
     # Update layout with larger dimensions and better spacing
     fig.update_layout(
