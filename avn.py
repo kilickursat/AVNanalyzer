@@ -1,10 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Thu Oct 10 14:44:16 2024
-
-@author: KilicK
-"""
-
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -497,7 +490,7 @@ def create_parameters_vs_chainage(df, selected_features, chainage_column):
 
     # Update layout with larger dimensions and better spacing
     fig.update_layout(
-        height=min(400 * len(available_features), 800),  # Cap the height at 800px
+        height=min(400 * len(available_features)),  # Cap the height at 800px
         width=1200,  # Increased overall width
         title_text=f'Parameters vs Chainage',
         showlegend=True,
