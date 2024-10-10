@@ -51,10 +51,10 @@ def calculate_advance_rate_and_stats(df, distance_column, time_column):
         return None, 0
 
 # Penetration rate calculation function
-def calculate_penetration_rate(row):
+def calculate_penetration_rate(row, revolution_col):
     try:
         speed = row['Average Speed (mm/min)']
-        revolution = row['Revolution [rpm]']
+        revolution = row[revolution_col]
         
         if pd.isna(speed) or pd.isna(revolution):
             return np.nan
@@ -118,12 +118,11 @@ def calculate_derived_features(df, working_pressure_col, revolution_col, n1, tor
         st.error(f"Error calculating derived features: {str(e)}")
         return df
 
-
 # Helper functions for column identification
 def identify_special_columns(df):
-    working_pressure_keywords = ['working pressure', 'arbeitsdruck', 'sr_arbdr', 'SR_Arbdr','pressure', 'druck', 'arbdr']
-    revolution_keywords = ['revolution', 'revolution (rpm)','drehzahl', 'rpm', 'drehz', 'sr_drehz', 'SR_Drehz','Revolution', 'Revolution [rpm]','Revolution (rpm)']
-    advance_rate_keywords = ['advance rate', 'advance rate [mm/min]', 'Advance rate', 'Advance_rate','Advance Rate','vortrieb', 'vorschub', 'VTgeschw_Z', 'geschw', 'geschw_Z']
+    working_pressure_keywords = ['working pressure', 'arbeitsdruck', 'pressure', 'druck', 'arbdr', 'sr_arbdr', 'SR_Arbdr']
+    revolution_keywords = ['revolution', 'drehzahl', 'rpm', 'drehz', 'sr_drehz', 'SR_Drehz']
+    advance_rate_keywords = ['advance rate', 'vortrieb', 'vorschub', 'penetration rate', 'VTgeschw_Z','geschw','geschw_Z']
 
     working_pressure_cols = [col for col in df.columns if any(kw in col.lower() for kw in working_pressure_keywords)]
     revolution_cols = [col for col in df.columns if any(kw in col.lower() for kw in revolution_keywords)]
@@ -166,7 +165,13 @@ def load_data(file):
 
 def read_rock_strength_data(file):
     try:
-        df = pd.read_excel(file)
+        if file.name.endswith('.csv'):
+            df = pd.read_csv(file)
+        elif file.name.endswith('.xlsx'):
+            df = pd.read_excel(file)
+        else:
+            st.error("Unsupported file format for Rock Strength Data")
+            return None
         return df
     except Exception as e:
         st.error(f"Error reading rock strength data: {e}")
@@ -183,8 +188,7 @@ def preprocess_rock_strength_data(df):
         st.error(f"Error preprocessing rock strength data: {e}")
         return None
 
-
-# Updated function to create comparison chart for machine parameters vs rock strength
+# Function to create comparison chart for machine parameters vs rock strength
 def create_rock_strength_comparison_chart(machine_df, rock_df, rock_type, selected_features):
     rock_df = rock_df[rock_df.index == rock_type]
     if rock_df.empty:
@@ -238,7 +242,7 @@ def create_rock_strength_comparison_chart(machine_df, rock_df, rock_type, select
 
     st.pyplot(fig)
 
-# Updated function to visualize correlation heatmap with dynamic input
+# Function to create correlation heatmap with dynamic input
 def create_correlation_heatmap(df, selected_features):
     if len(selected_features) < 2:
         st.warning("Please select at least two features for the correlation heatmap.")
@@ -260,8 +264,7 @@ def create_correlation_heatmap(df, selected_features):
     except Exception as e:
         st.error(f"Error creating correlation heatmap: {str(e)}")
 
-
-# Updated function to create statistical summary
+# Function to create statistical summary
 def create_statistical_summary(df, selected_features, round_to=2):
     if not selected_features:
         st.warning("Please select at least one feature for the statistical summary.")
@@ -331,6 +334,7 @@ def create_statistical_summary(df, selected_features, round_to=2):
     # Display the styled table
     st.markdown(final_html, unsafe_allow_html=True)
 
+# Function to create features vs time plot
 def create_features_vs_time(df, selected_features, time_column):
     if not selected_features:
         st.warning("Please select at least one feature for the time series plot.")
@@ -378,8 +382,7 @@ def create_features_vs_time(df, selected_features, time_column):
 
     st.plotly_chart(fig, use_container_width=True)
 
-
-# Updated function to create Pressure Distribution Over Time Polar Plot with Plotly
+# Function to create pressure distribution over time polar plot with Plotly
 def create_pressure_distribution_polar_plot(df, pressure_column, time_column):
     try:
         df[pressure_column] = pd.to_numeric(df[pressure_column], errors='coerce')
@@ -428,17 +431,20 @@ def create_pressure_distribution_polar_plot(df, pressure_column, time_column):
     except Exception as e:
         st.error(f"Error creating pressure distribution polar plot: {e}")
 
+# Function to rename columns for visualization
 def rename_columns(df, working_pressure_col, revolution_col, distance_col, advance_rate_col):
-    column_mapping = {
-        working_pressure_col: 'Working pressure [bar]',
-        revolution_col: 'Revolution [rpm]',
-        distance_col: 'Chainage [mm]',
-        advance_rate_col: 'Advance rate [mm/min]'
-    }
+    column_mapping = {}
+    if working_pressure_col != 'None':
+        column_mapping[working_pressure_col] = 'Working pressure [bar]'
+    if revolution_col != 'None':
+        column_mapping[revolution_col] = 'Revolution [rpm]'
+    if distance_col != 'None':
+        column_mapping[distance_col] = 'Chainage [mm]'
+    if advance_rate_col != 'None':
+        column_mapping[advance_rate_col] = 'Advance rate [mm/min]'
     return df.rename(columns=column_mapping)
 
-
-
+# Function to create parameters vs chainage plot
 def create_parameters_vs_chainage(df, selected_features, chainage_column):
     if not selected_features:
         st.warning("Please select at least one feature for the chainage plot.")
@@ -509,8 +515,7 @@ def create_parameters_vs_chainage(df, selected_features, chainage_column):
 
     st.plotly_chart(fig, use_container_width=True)
 
-
-# Updated function to create multi-axis box plots with additional features
+# Function to create multi-axis box plots with additional features
 def create_multi_axis_box_plots(df, selected_features):
     if not selected_features:
         st.warning("Please select at least one feature for the box plots.")
@@ -537,7 +542,7 @@ def create_multi_axis_box_plots(df, selected_features):
     except Exception as e:
         st.error(f"Error creating box plots: {e}")
 
-# Updated function to create multi-axis violin plots with added customization
+# Function to create multi-axis violin plots with added customization
 def create_multi_axis_violin_plots(df, selected_features):
     if not selected_features:
         st.warning("Please select at least one feature for the violin plots.")
@@ -564,6 +569,7 @@ def create_multi_axis_violin_plots(df, selected_features):
     except Exception as e:
         st.error(f"Error creating violin plots: {e}")
 
+# Function to add custom background color
 def set_background_color():
     st.markdown(
         """
@@ -577,6 +583,7 @@ def set_background_color():
         unsafe_allow_html=True
     )
 
+# Function to add logo to sidebar
 def add_logo():
     try:
         st.sidebar.markdown(
@@ -631,17 +638,6 @@ def add_logo():
     except Exception as e:
         st.error(f"Failed to add logo: {e}")
 
-def identify_special_columns(df):
-    working_pressure_keywords = ['working pressure', 'arbeitsdruck', 'pressure', 'druck', 'arbdr', 'sr_arbdr', 'SR_Arbdr']
-    revolution_keywords = ['revolution', 'drehzahl', 'rpm', 'drehz', 'sr_drehz', 'SR_Drehz']
-    advance_rate_keywords = ['advance rate', 'vortrieb', 'vorschub', 'penetration rate', 'VTgeschw_Z','geschw','geschw_Z']
-
-    working_pressure_cols = [col for col in df.columns if any(kw in col.lower() for kw in working_pressure_keywords)]
-    revolution_cols = [col for col in df.columns if any(kw in col.lower() for kw in revolution_keywords)]
-    advance_rate_cols = [col for col in df.columns if any(kw in col.lower() for kw in advance_rate_keywords)]
-
-    return working_pressure_cols, revolution_cols, advance_rate_cols
-
 # Helper function to suggest column based on keywords
 def suggest_column(df, keywords):
     for col in df.columns:
@@ -649,13 +645,18 @@ def suggest_column(df, keywords):
             return col
     return None
 
-def get_time_column(df):
-    time_keywords = ['relativzeit', 'relative time', 'time', 'datum', 'date', 'zeit', 'timestamp', 'Relative Time', 'Relativzeit']
-    for col in df.columns:
-        if any(keyword in col.lower() for keyword in time_keywords):
-            return col
-    return None
+# Safe selectbox to handle 'None' selection
+def safe_selectbox(label, options, suggested_option):
+    try:
+        if suggested_option and suggested_option in options:
+            index = options.index(suggested_option)
+        else:
+            index = 0  # Default to 'None'
+    except ValueError:
+        index = 0  # Default to 'None' if suggested_option is not in options
+    return st.sidebar.selectbox(label, options, index=index)
 
+# Function to create thrust force plots
 def create_thrust_force_plots(df, advance_rate_col):
     try:
         thrust_force_col = suggest_column(df, ['thrust force', 'vorschubkraft', 'kraft','kraft_max','gesamtkraft','gesamtkraft_stz','gesamtkraft_vtp'])
@@ -696,7 +697,7 @@ def create_thrust_force_plots(df, advance_rate_col):
             st.warning("Average Speed (mm/min) column not found. Skipping this plot.")
 
         # Thrust Force vs Selected Advance Rate
-        if advance_rate_col in df.columns:
+        if advance_rate_col != 'None' and advance_rate_col in df.columns:
             fig.add_trace(go.Scatter(
                 x=df[advance_rate_col], 
                 y=df[thrust_force_col], 
@@ -705,7 +706,7 @@ def create_thrust_force_plots(df, advance_rate_col):
                 marker=dict(color='red', size=5)
             ), row=3, col=1)
         else:
-            st.warning(f"Selected Advance Rate column '{advance_rate_col}' not found. Skipping this plot.")
+            st.warning(f"Selected Advance Rate column '{advance_rate_col}' not found or not selected. Skipping this plot.")
 
         fig.update_layout(height=1200, width=800, title_text="Thrust Force Relationships")
         fig.update_xaxes(title_text="Penetration Rate [mm/rev]", row=1, col=1)
@@ -718,61 +719,6 @@ def create_thrust_force_plots(df, advance_rate_col):
         st.plotly_chart(fig)
     except Exception as e:
         st.error(f"Error creating thrust force plots: {e}")
-
-def safe_selectbox(label, options, suggested_option):
-    try:
-        if suggested_option and suggested_option in options:
-            index = options.index(suggested_option)
-        else:
-            index = 0  # Default to 'None'
-    except ValueError:
-        index = 0  # Default to 'None' if suggested_option is not in options
-    return st.sidebar.selectbox(label, options, index=index)
-
-# Add these functions after the existing helper functions and before the visualization functions
-
-def calculate_advance_rate_and_stats(df, distance_column, time_column):
-    try:
-        df[distance_column] = pd.to_numeric(df[distance_column], errors='coerce')
-        df[time_column] = pd.to_numeric(df[time_column], errors='coerce')
-
-        if len(df) > 1:
-            weg = round(df[distance_column].max() - df[distance_column].min(), 2)
-            zeit = round(df[time_column].max() - df[time_column].min(), 2)
-        else:
-            weg = df[distance_column].iloc[0]
-            zeit = df[time_column].iloc[0]
-
-        zeit = zeit * (0.000001 / 60)
-
-        average_speed = round(weg / zeit, 2) if zeit != 0 else 0
-
-        result = {
-            "Total Distance (mm)": weg,
-            "Total Time (min)": zeit,
-            "Average Speed (mm/min)": average_speed
-        }
-
-        return result, average_speed
-    except Exception as e:
-        st.error(f"Error calculating advance rate stats: {str(e)}")
-        return None, 0
-
-
-def calculate_penetration_rate(row, revolution_col):
-    try:
-        speed = row['Average Speed (mm/min)']
-        revolution = row[revolution_col]
-
-        if pd.isna(speed) or pd.isna(revolution):
-            return np.nan
-        elif revolution == 0:
-            return np.inf if speed != 0 else 0
-        else:
-            return round(speed / revolution, 4)
-    except Exception as e:
-        st.error(f"Error calculating penetration rate: {str(e)}")
-        return np.nan
 
 # Main function
 def main():
@@ -824,7 +770,7 @@ def main():
                 if working_pressure_col != 'None' and revolution_col != 'None':
                     df = calculate_derived_features(df, working_pressure_col, revolution_col, n1, torque_constant, selected_distance)
 
-                # **Move rename_columns after calculate_derived_features**
+                # Move rename_columns after calculate_derived_features
                 df_viz = rename_columns(df.copy(), working_pressure_col, revolution_col, selected_distance, advance_rate_col)
 
                 all_features = df_viz.columns.tolist()
@@ -881,7 +827,7 @@ def main():
                         else:
                             st.warning("Please upload rock strength data and select a rock type to view the comparison.")
                     elif selected_option == 'Thrust Force Plots':
-                        if advance_rate_col and advance_rate_col != 'None':
+                        if advance_rate_col != 'None' and advance_rate_col in df_viz.columns:
                             create_thrust_force_plots(df_viz, advance_rate_col)
                         else:
                             st.warning("Please select a valid advance rate column for Thrust Force Plots.")
@@ -900,6 +846,6 @@ def main():
     st.markdown("---")
     st.markdown("© 2024 Herrenknecht AG. All rights reserved.")
     st.markdown("Created by Kursat Kilic - Geotechnical Digitalization")
-    
+
 if __name__ == "__main__":
     main()
