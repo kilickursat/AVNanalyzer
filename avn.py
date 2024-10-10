@@ -439,6 +439,7 @@ def rename_columns(df, working_pressure_col, revolution_col, distance_col, advan
 
 
 
+
 def create_parameters_vs_chainage(df, selected_features, chainage_column):
     if not selected_features:
         st.warning("Please select at least one feature for the chainage plot.")
@@ -453,7 +454,7 @@ def create_parameters_vs_chainage(df, selected_features, chainage_column):
     df = df.sort_values(by=chainage_column)
 
     colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEEAD', '#D4A5A5',
-              '#9B6B6B', '#E9967A', '#4682B4', '#6B8E23']  # Expanded color palette
+              '#9B6B6B', '#E9967A', '#4682B4', '#6B8E23']
 
     available_features = [f for f in selected_features if f in df.columns]
     
@@ -464,7 +465,7 @@ def create_parameters_vs_chainage(df, selected_features, chainage_column):
     fig = make_subplots(rows=len(available_features), cols=1,
                         shared_xaxes=True,
                         subplot_titles=available_features,
-                        vertical_spacing=0.05)  # Reduce spacing between subplots
+                        vertical_spacing=0.1)  # Increased spacing between subplots
 
     for i, feature in enumerate(available_features, start=1):
         try:
@@ -483,15 +484,20 @@ def create_parameters_vs_chainage(df, selected_features, chainage_column):
                 col=1
             )
 
-            # Update y-axis titles
-            fig.update_yaxes(title_text=feature_name, row=i, col=1)
+            # Update y-axis titles with more space
+            fig.update_yaxes(
+                title_text=feature_name, 
+                row=i, 
+                col=1,
+                title_standoff=40  # Increased standoff to prevent overlap
+            )
         except Exception as e:
             st.warning(f"Error plotting feature '{feature}': {e}")
 
-    # Update layout with larger dimensions and better spacing
+    # Update layout with adjusted dimensions
     fig.update_layout(
-        height=min(400 * len(available_features)),  # Cap the height at 800px
-        width=1200,  # Increased overall width
+        height=300 * len(available_features),  # Dynamic height based on number of features
+        width=1200,
         title_text=f'Parameters vs Chainage',
         showlegend=True,
         legend=dict(
@@ -501,13 +507,14 @@ def create_parameters_vs_chainage(df, selected_features, chainage_column):
             xanchor="right",
             x=1
         ),
-        margin=dict(t=100, l=100, r=50, b=50)  # Adjusted margins
+        margin=dict(t=100, l=150, r=50, b=50)  # Increased left margin for y-axis labels
     )
 
     # Update x-axis title only for the bottom subplot
     fig.update_xaxes(title_text='Chainage [mm]', row=len(available_features), col=1)
 
     st.plotly_chart(fig, use_container_width=True)
+
 
 
 # Updated function to create multi-axis box plots with additional features
@@ -656,9 +663,13 @@ def get_time_column(df):
             return col
     return None
 
+
 def create_thrust_force_plots(df, advance_rate_col):
     try:
-        thrust_force_col = suggest_column(df, ['thrust force', 'vorschubkraft', 'kraft','kraft_max','gesamtkraft','gesamtkraft_stz','gesamtkraft_vtp'])
+        # Updated column identification
+        thrust_force_col = next((col for col in df.columns 
+                               if any(kw in col.lower() for kw in ['thrust force', 'vorschubkraft', 'kraft', 'kraft_max', 'gesamtkraft', 'gesamtkraft_stz', 'gesamtkraft_vtp'])), 
+                              None)
         penetration_rate_col = 'Penetration Rate [mm/rev]'
         average_speed_col = 'Average Speed (mm/min)'
 
@@ -666,24 +677,23 @@ def create_thrust_force_plots(df, advance_rate_col):
             st.warning("Thrust force column not found in the dataset.")
             return
 
-        if penetration_rate_col not in df.columns:
-            st.warning("Penetration Rate [mm/rev] column not found. Ensure it is calculated correctly.")
-            return
-
         fig = make_subplots(rows=3, cols=1, subplot_titles=("Thrust Force vs Penetration Rate", 
                                                            "Thrust Force vs Average Speed", 
                                                            "Thrust Force vs Selected Advance Rate"))
 
-        # Thrust Force vs Penetration Rate
-        fig.add_trace(go.Scatter(
-            x=df[penetration_rate_col], 
-            y=df[thrust_force_col], 
-            mode='markers', 
-            name='Penetration Rate [mm/rev]', 
-            marker=dict(color='blue', size=5)
-        ), row=1, col=1)
+        # Plot 1: Thrust Force vs Penetration Rate
+        if penetration_rate_col in df.columns:
+            fig.add_trace(go.Scatter(
+                x=df[penetration_rate_col], 
+                y=df[thrust_force_col], 
+                mode='markers', 
+                name='Penetration Rate [mm/rev]', 
+                marker=dict(color='blue', size=5)
+            ), row=1, col=1)
+        else:
+            st.warning("Penetration Rate [mm/rev] column not found.")
 
-        # Thrust Force vs Average Speed
+        # Plot 2: Thrust Force vs Average Speed
         if average_speed_col in df.columns:
             fig.add_trace(go.Scatter(
                 x=df[average_speed_col], 
@@ -692,25 +702,31 @@ def create_thrust_force_plots(df, advance_rate_col):
                 name='Average Speed (mm/min)',
                 marker=dict(color='green', size=5)
             ), row=2, col=1)
-        else:
-            st.warning("Average Speed (mm/min) column not found. Skipping this plot.")
 
-        # Thrust Force vs Selected Advance Rate
-        if advance_rate_col in df.columns:
+        # Plot 3: Thrust Force vs Selected Advance Rate
+        if advance_rate_col and advance_rate_col != 'None' and advance_rate_col in df.columns:
             fig.add_trace(go.Scatter(
                 x=df[advance_rate_col], 
                 y=df[thrust_force_col], 
                 mode='markers', 
-                name=f'Selected Advance Rate ({advance_rate_col})',
+                name=advance_rate_col,
                 marker=dict(color='red', size=5)
             ), row=3, col=1)
         else:
-            st.warning(f"Selected Advance Rate column '{advance_rate_col}' not found. Skipping this plot.")
+            st.warning(f"Selected advance rate column not found. Please check your column selection.")
 
-        fig.update_layout(height=1200, width=800, title_text="Thrust Force Relationships")
+        # Update layout
+        fig.update_layout(
+            height=1200, 
+            width=800, 
+            title_text="Thrust Force Relationships",
+            showlegend=True
+        )
+        
+        # Update axes labels
         fig.update_xaxes(title_text="Penetration Rate [mm/rev]", row=1, col=1)
         fig.update_xaxes(title_text="Average Speed (mm/min)", row=2, col=1)
-        fig.update_xaxes(title_text=f"Selected Advance Rate ({advance_rate_col})", row=3, col=1)
+        fig.update_xaxes(title_text=advance_rate_col if advance_rate_col and advance_rate_col != 'None' else "Advance Rate", row=3, col=1)
         fig.update_yaxes(title_text="Thrust Force [kN]", row=1, col=1)
         fig.update_yaxes(title_text="Thrust Force [kN]", row=2, col=1)
         fig.update_yaxes(title_text="Thrust Force [kN]", row=3, col=1)
@@ -718,6 +734,7 @@ def create_thrust_force_plots(df, advance_rate_col):
         st.plotly_chart(fig)
     except Exception as e:
         st.error(f"Error creating thrust force plots: {e}")
+
 
 def safe_selectbox(label, options, suggested_option):
     try:
@@ -824,27 +841,32 @@ def main():
                 if working_pressure_col != 'None' and revolution_col != 'None':
                     df = calculate_derived_features(df, working_pressure_col, revolution_col, n1, torque_constant, selected_distance)
 
-                # **Move rename_columns after calculate_derived_features**
+                # Rename columns after calculating derived features
                 df_viz = rename_columns(df.copy(), working_pressure_col, revolution_col, selected_distance, advance_rate_col)
 
                 all_features = df_viz.columns.tolist()
                 
-                # Allow user to select features, with derived features pre-selected
-                selected_features = st.sidebar.multiselect(
-                    "Select features for analysis",
-                    all_features,
-                    default=['Calculated torque [kNm]', 'Average Speed (mm/min)', 'Penetration Rate [mm/rev]']
-                )
-
                 time_column = get_time_column(df_viz)
 
-                options = ['Correlation Heatmap', 'Statistical Summary', 'Parameters vs Chainage', 'Box Plots', 'Violin Plots', 'Thrust Force Plots']
+                # Define visualization options
+                options = ['Statistical Summary', 'Parameters vs Chainage', 'Box Plots', 'Violin Plots', 'Thrust Force Plots', 'Correlation Heatmap']
                 if time_column:
                     options.extend(['Features vs Time', 'Pressure Distribution'])
                 if rock_strength_file:
                     options.append('Rock Strength Comparison')
 
+                # Move visualization selection after feature selection
                 selected_option = st.sidebar.radio("Choose visualization", options)
+
+                # Only show feature selection for visualizations that need it
+                if selected_option not in ['Pressure Distribution', 'Thrust Force Plots']:
+                    selected_features = st.sidebar.multiselect(
+                        "Select features for analysis",
+                        all_features,
+                        default=['Calculated torque [kNm]', 'Average Speed (mm/min)', 'Penetration Rate [mm/rev]']
+                        if all(feat in all_features for feat in ['Calculated torque [kNm]', 'Average Speed (mm/min)', 'Penetration Rate [mm/rev]'])
+                        else []
+                    )
 
                 rock_df = None
                 if rock_strength_file:
@@ -855,36 +877,49 @@ def main():
 
                 st.subheader(f"Visualization: {selected_option}")
 
-                if not selected_features and selected_option not in ['Pressure Distribution', 'Thrust Force Plots']:
-                    st.warning("Please select at least one feature for analysis.")
-                else:
-                    if selected_option == 'Correlation Heatmap':
+                # Updated visualization selection logic
+                if selected_option == 'Correlation Heatmap':
+                    if selected_features and len(selected_features) > 1:
                         create_correlation_heatmap(df_viz, selected_features)
-                    elif selected_option == 'Statistical Summary':
+                    else:
+                        st.warning("Please select at least two features for correlation analysis.")
+                elif selected_option == 'Statistical Summary':
+                    if selected_features:
                         create_statistical_summary(df_viz, selected_features)
-                    elif selected_option == 'Features vs Time' and time_column:
+                    else:
+                        st.warning("Please select features for statistical analysis.")
+                elif selected_option == 'Features vs Time' and time_column:
+                    if selected_features:
                         create_features_vs_time(df_viz, selected_features, time_column)
-                    elif selected_option == 'Pressure Distribution' and time_column:
-                        if working_pressure_col and working_pressure_col != 'None':
-                            create_pressure_distribution_polar_plot(df_viz, working_pressure_col, time_column)
-                        else:
-                            st.warning("Please select a valid working pressure column.")
-                    elif selected_option == 'Parameters vs Chainage':
+                    else:
+                        st.warning("Please select features to visualize over time.")
+                elif selected_option == 'Pressure Distribution' and time_column:
+                    if working_pressure_col and working_pressure_col != 'None':
+                        create_pressure_distribution_polar_plot(df_viz, working_pressure_col, time_column)
+                    else:
+                        st.warning("Please select a valid working pressure column.")
+                elif selected_option == 'Parameters vs Chainage':
+                    if selected_features:
                         create_parameters_vs_chainage(df_viz, selected_features, 'Chainage [mm]')
-                    elif selected_option == 'Box Plots':
+                    else:
+                        st.warning("Please select features to visualize against chainage.")
+                elif selected_option == 'Box Plots':
+                    if selected_features:
                         create_multi_axis_box_plots(df_viz, selected_features)
-                    elif selected_option == 'Violin Plots':
+                    else:
+                        st.warning("Please select features for box plot analysis.")
+                elif selected_option == 'Violin Plots':
+                    if selected_features:
                         create_multi_axis_violin_plots(df_viz, selected_features)
-                    elif selected_option == 'Rock Strength Comparison':
-                        if rock_df is not None and 'rock_type' in locals():
-                            create_rock_strength_comparison_chart(df_viz, rock_df, rock_type, selected_features)
-                        else:
-                            st.warning("Please upload rock strength data and select a rock type to view the comparison.")
-                    elif selected_option == 'Thrust Force Plots':
-                        if advance_rate_col and advance_rate_col != 'None':
-                            create_thrust_force_plots(df_viz, advance_rate_col)
-                        else:
-                            st.warning("Please select a valid advance rate column for Thrust Force Plots.")
+                    else:
+                        st.warning("Please select features for violin plot analysis.")
+                elif selected_option == 'Rock Strength Comparison':
+                    if rock_df is not None and 'rock_type' in locals() and selected_features:
+                        create_rock_strength_comparison_chart(df_viz, rock_df, rock_type, selected_features)
+                    else:
+                        st.warning("Please upload rock strength data, select a rock type, and choose features to view the comparison.")
+                elif selected_option == 'Thrust Force Plots':
+                    create_thrust_force_plots(df_viz, advance_rate_col)
 
                 if st.sidebar.button("Download Processed Data"):
                     csv = df_viz.to_csv(index=False)
