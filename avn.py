@@ -416,7 +416,7 @@ def create_pressure_distribution_polar_plot(df, pressure_column, time_column):
     try:
         # Check if the pressure column exists, if not, try to find a similar column
         if pressure_column not in df.columns:
-            potential_columns = [col for col in df.columns if pressure_column.lower() in col.lower()]
+            potential_columns = [col for col in df.columns if 'pressure' in col.lower() or 'druck' in col.lower()]
             if potential_columns:
                 pressure_column = potential_columns[0]
                 st.warning(f"Original pressure column not found. Using '{pressure_column}' instead.")
