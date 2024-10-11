@@ -185,58 +185,78 @@ def preprocess_rock_strength_data(df):
 
 
 # Updated function to create comparison chart for machine parameters vs rock strength
-def create_rock_strength_comparison_chart(machine_df, rock_df, rock_type, selected_features):
-    rock_df = rock_df[rock_df.index == rock_type]
-    if rock_df.empty:
-        st.error(f"No data available for {rock_type} rock type.")
-        return
+def create_rock_strength_comparison_chart(df, rock_df, rock_type, selected_features):
+    try:
+        # Create a new figure for Plotly
+        fig = go.Figure()
+        
+        # Define color palette for different parameters
+        colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEEAD', '#D4A5A5']
+        
+        # Create histograms only for selected features
+        for i, feature in enumerate(selected_features):
+            if feature in df.columns:
+                # Calculate optimal number of bins using Sturges' rule
+                n_bins = int(np.ceil(np.log2(len(df[feature].dropna())) + 1))
+                
+                # Add histogram for machine data
+                fig.add_trace(go.Histogram(
+                    x=df[feature],
+                    name=f'{feature}',
+                    nbinsx=n_bins,
+                    marker_color=colors[i % len(colors)],
+                    opacity=0.7,
+                    showlegend=True
+                ))
+                
+                # Add rock strength reference line if available
+                if feature in rock_df.columns:
+                    rock_strength_value = rock_df.loc[rock_type, feature]
+                    if pd.notna(rock_strength_value):
+                        fig.add_vline(
+                            x=rock_strength_value,
+                            line_dash="dash",
+                            line_color=colors[i % len(colors)],
+                            annotation_text=f"{rock_type} Reference",
+                            annotation_position="top right"
+                        )
 
-    avg_values = machine_df[selected_features].mean()
+        # Update layout with improved styling
+        fig.update_layout(
+            title=f'Parameter Distribution vs {rock_type} Rock Strength',
+            xaxis_title="Parameter Values",
+            yaxis_title="Frequency",
+            barmode='overlay',
+            height=600,
+            width=1000,
+            showlegend=True,
+            template='plotly_white',
+            bargap=0.1,
+            # Add hover mode for better interactivity
+            hovermode='x unified',
+            # Improve legend positioning and style
+            legend=dict(
+                yanchor="top",
+                y=0.99,
+                xanchor="right",
+                x=0.99,
+                bgcolor="rgba(255, 255, 255, 0.8)",
+                bordercolor="rgba(0, 0, 0, 0.3)",
+                borderwidth=1
+            )
+        )
 
-    parameters = []
-    machine_values = []
-    for feature in selected_features:
-        if any(keyword in feature.lower() for keyword in ['advance rate', 'vortrieb', 'vorschub', 'VTgeschw', 'geschw']):
-            parameters.append('Advance rate [mm/min]')
-        elif any(keyword in feature.lower() for keyword in ['revolution', 'drehzahl', 'rpm', 'drehz', 'sr_drehz', 'SR_Drehz']):
-            parameters.append('Revolution [rpm]')
-        elif any(keyword in feature.lower() for keyword in ['working pressure', 'arbeitsdruck', 'pressure', 'druck', 'arbdr', 'sr_arbdr', 'SR_Arbdr']):
-            parameters.append('Working pressure [bar]')
-        else:
-            parameters.append(feature)
-        machine_values.append(avg_values[feature])
+        # Add better hover template
+        fig.update_traces(
+            hovertemplate="<b>%{x}</b><br>" +
+                         "Count: %{y}<br>" +
+                         "<extra></extra>"  # This removes the secondary box
+        )
 
-    ucs_values = [rock_df['UCS (MPa)'].iloc[0]] * len(selected_features)
-    bts_values = [rock_df['BTS (MPa)'].iloc[0]] * len(selected_features)
-    plt_values = [rock_df['PLT (MPa)'].iloc[0]] * len(selected_features)
-
-    fig, axs = plt.subplots(2, 2, figsize=(16, 16), dpi=100)  # Reduced dpi from 600 to 100
-    fig.suptitle(f"Machine Parameters vs {rock_type} Rock Strength", fontsize=20, fontweight='bold')
-
-    colors = ['#a8e6cf', '#dcedc1', '#ffd3b6', '#ffaaa5']
-
-    for i, (param, ax) in enumerate(zip(parameters, axs.flat)):
-        x = np.arange(4)
-        width = 0.2
-
-        bars = ax.bar(x, [machine_values[i], ucs_values[i], bts_values[i], plt_values[i]], width, color=colors, edgecolor='black')
-
-        ax.set_ylabel('Value', fontsize=12, fontweight='bold')
-        ax.set_title(f'{rock_type} - {param}', fontsize=16, fontweight='bold')
-        ax.set_xticks(x)
-
-        ax.set_xticklabels([param, 'UCS', 'BTS', 'PLT'], fontsize=12, fontweight='bold')
-
-        ax.tick_params(axis='y', labelsize=10)
-
-        for bar in bars:
-            height = bar.get_height()
-            ax.text(bar.get_x() + bar.get_width()/2., height,
-                    f'{height:.2f}', ha='center', va='bottom', fontsize=12, fontweight='bold')
-
-    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
-
-    st.pyplot(fig)
+        st.plotly_chart(fig)
+        
+    except Exception as e:
+        st.error(f"Error creating rock strength comparison chart: {e}")
 
 # Updated function to visualize correlation heatmap with dynamic input
 def create_correlation_heatmap(df, selected_features):
@@ -666,74 +686,85 @@ def get_time_column(df):
 
 def create_thrust_force_plots(df, advance_rate_col):
     try:
-        # Updated column identification
+        # Updated column identification with more comprehensive keywords
         thrust_force_col = next((col for col in df.columns 
-                               if any(kw in col.lower() for kw in ['thrust force', 'vorschubkraft', 'kraft', 'kraft_max', 'gesamtkraft', 'gesamtkraft_stz', 'gesamtkraft_vtp'])), 
+                               if any(kw in col.lower() for kw in [
+                                   'thrust force', 'vorschubkraft', 'kraft', 'kraft_max', 
+                                   'gesamtkraft', 'gesamtkraft_stz', 'gesamtkraft_vtp', 
+                                   'force'])), 
                               None)
-        penetration_rate_col = 'Penetration Rate [mm/rev]'
-        average_speed_col = 'Average Speed (mm/min)'
-
+        
         if thrust_force_col is None:
             st.warning("Thrust force column not found in the dataset.")
             return
 
-        fig = make_subplots(rows=3, cols=1, subplot_titles=("Thrust Force vs Penetration Rate", 
-                                                           "Thrust Force vs Average Speed", 
-                                                           "Thrust Force vs Selected Advance Rate"))
+        # Create subplots
+        fig = make_subplots(rows=3, cols=1, 
+                           subplot_titles=("Thrust Force vs Penetration Rate", 
+                                         "Thrust Force vs Average Speed", 
+                                         "Thrust Force vs Advance Rate"),
+                           vertical_spacing=0.1)
 
         # Plot 1: Thrust Force vs Penetration Rate
-        if penetration_rate_col in df.columns:
+        if 'Penetration Rate [mm/rev]' in df.columns:
+            mask = df['Penetration Rate [mm/rev]'].notna()
             fig.add_trace(go.Scatter(
-                x=df[penetration_rate_col], 
-                y=df[thrust_force_col], 
+                x=df.loc[mask, 'Penetration Rate [mm/rev]'], 
+                y=df.loc[mask, thrust_force_col], 
                 mode='markers', 
-                name='Penetration Rate [mm/rev]', 
+                name='vs Penetration Rate', 
                 marker=dict(color='blue', size=5)
             ), row=1, col=1)
         else:
-            st.warning("Penetration Rate [mm/rev] column not found.")
+            st.warning("Penetration Rate [mm/rev] column not found in the dataset.")
 
         # Plot 2: Thrust Force vs Average Speed
-        if average_speed_col in df.columns:
+        if 'Average Speed (mm/min)' in df.columns:
+            mask = df['Average Speed (mm/min)'].notna()
             fig.add_trace(go.Scatter(
-                x=df[average_speed_col], 
-                y=df[thrust_force_col], 
+                x=df.loc[mask, 'Average Speed (mm/min)'], 
+                y=df.loc[mask, thrust_force_col], 
                 mode='markers', 
-                name='Average Speed (mm/min)',
+                name='vs Average Speed',
                 marker=dict(color='green', size=5)
             ), row=2, col=1)
+        else:
+            st.warning("Average Speed (mm/min) column not found in the dataset.")
 
         # Plot 3: Thrust Force vs Selected Advance Rate
-        if advance_rate_col and advance_rate_col != 'None' and advance_rate_col in df.columns:
+        if advance_rate_col and advance_rate_col in df.columns:
+            mask = df[advance_rate_col].notna()
             fig.add_trace(go.Scatter(
-                x=df[advance_rate_col], 
-                y=df[thrust_force_col], 
+                x=df.loc[mask, advance_rate_col], 
+                y=df.loc[mask, thrust_force_col], 
                 mode='markers', 
-                name=advance_rate_col,
+                name='vs Advance Rate',
                 marker=dict(color='red', size=5)
             ), row=3, col=1)
         else:
-            st.warning(f"Selected advance rate column not found. Please check your column selection.")
+            st.warning("Selected advance rate column not available for plotting.")
 
-        # Update layout
+        # Update layout with improved styling
         fig.update_layout(
             height=1200, 
             width=800, 
             title_text="Thrust Force Relationships",
-            showlegend=True
+            showlegend=True,
+            template='plotly_white'
         )
         
-        # Update axes labels
+        # Update axes labels with proper units
         fig.update_xaxes(title_text="Penetration Rate [mm/rev]", row=1, col=1)
-        fig.update_xaxes(title_text="Average Speed (mm/min)", row=2, col=1)
-        fig.update_xaxes(title_text=advance_rate_col if advance_rate_col and advance_rate_col != 'None' else "Advance Rate", row=3, col=1)
-        fig.update_yaxes(title_text="Thrust Force [kN]", row=1, col=1)
-        fig.update_yaxes(title_text="Thrust Force [kN]", row=2, col=1)
-        fig.update_yaxes(title_text="Thrust Force [kN]", row=3, col=1)
+        fig.update_xaxes(title_text="Average Speed [mm/min]", row=2, col=1)
+        fig.update_xaxes(title_text=advance_rate_col if advance_rate_col else "Advance Rate [mm/min]", row=3, col=1)
+        
+        for i in range(1, 4):
+            fig.update_yaxes(title_text="Thrust Force [kN]", row=i, col=1)
 
         st.plotly_chart(fig)
     except Exception as e:
         st.error(f"Error creating thrust force plots: {e}")
+
 
 
 def safe_selectbox(label, options, suggested_option):
@@ -838,8 +869,15 @@ def main():
                 n1 = st.sidebar.number_input("Enter n1 value (revolution 1/min)", min_value=0.0, value=1.0, step=0.1)
                 torque_constant = st.sidebar.number_input("Enter torque constant", min_value=0.0, value=1.0, step=0.1)
 
+                # Calculate derived features including Penetration Rate
                 if working_pressure_col != 'None' and revolution_col != 'None':
                     df = calculate_derived_features(df, working_pressure_col, revolution_col, n1, torque_constant, selected_distance)
+                    
+                    # Explicitly calculate Penetration Rate
+                    if 'Average Speed (mm/min)' in df.columns:
+                        df['Penetration Rate [mm/rev]'] = df.apply(
+                            lambda row: calculate_penetration_rate(row, revolution_col), axis=1
+                        )
 
                 # Rename columns after calculating derived features
                 df_viz = rename_columns(df.copy(), working_pressure_col, revolution_col, selected_distance, advance_rate_col)
@@ -855,21 +893,26 @@ def main():
                 if rock_strength_file:
                     options.append('Rock Strength Comparison')
 
-                # Move visualization selection after feature selection
                 selected_option = st.sidebar.radio("Choose visualization", options)
 
-                # Only show feature selection for visualizations that need it
+                # Feature selection for visualizations that need it
                 if selected_option not in ['Pressure Distribution', 'Thrust Force Plots']:
+                    default_features = []
+                    if 'Calculated torque [kNm]' in all_features:
+                        default_features.append('Calculated torque [kNm]')
+                    if 'Average Speed (mm/min)' in all_features:
+                        default_features.append('Average Speed (mm/min)')
+                    if 'Penetration Rate [mm/rev]' in all_features:
+                        default_features.append('Penetration Rate [mm/rev]')
+                    
                     selected_features = st.sidebar.multiselect(
                         "Select features for analysis",
                         all_features,
-                        default=['Calculated torque [kNm]', 'Average Speed (mm/min)', 'Penetration Rate [mm/rev]']
-                        if all(feat in all_features for feat in ['Calculated torque [kNm]', 'Average Speed (mm/min)', 'Penetration Rate [mm/rev]'])
-                        else []
+                        default=default_features
                     )
 
                 rock_df = None
-                if rock_strength_file:
+                if rock_strength_file and selected_option == 'Rock Strength Comparison':
                     rock_strength_data = read_rock_strength_data(rock_strength_file)
                     if rock_strength_data is not None:
                         rock_df = preprocess_rock_strength_data(rock_strength_data)
@@ -877,8 +920,50 @@ def main():
 
                 st.subheader(f"Visualization: {selected_option}")
 
-                # Updated visualization selection logic
-                if selected_option == 'Correlation Heatmap':
+                if selected_option == 'Rock Strength Comparison':
+                    if rock_df is not None and 'rock_type' in locals() and selected_features:
+                        fig = go.Figure()
+                        colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4']
+                        
+                        for i, feature in enumerate(selected_features):
+                            # Machine data histogram
+                            fig.add_trace(go.Histogram(
+                                x=df_viz[feature],
+                                name=f'{feature} Distribution',
+                                marker_color=colors[i % len(colors)],
+                                opacity=0.7
+                            ))
+                            
+                            # Add rock strength reference lines if available
+                            if feature in rock_df.columns:
+                                fig.add_vline(
+                                    x=rock_df.loc[rock_type, feature],
+                                    line_dash="dash",
+                                    line_color=colors[i % len(colors)],
+                                    annotation_text=f"{rock_type} {feature}"
+                                )
+                        
+                        fig.update_layout(
+                            title=f'Parameter Distribution vs {rock_type} Rock Strength',
+                            barmode='overlay',
+                            height=600,
+                            width=1000,
+                            showlegend=True
+                        )
+                        
+                        st.plotly_chart(fig)
+                    else:
+                        st.warning("Please upload rock strength data, select a rock type, and choose features to view the comparison.")
+                
+                elif selected_option == 'Thrust Force Plots':
+                    # Ensure advance rate column is properly passed
+                    create_thrust_force_plots(
+                        df_viz, 
+                        'Advance rate [mm/min]' if advance_rate_col != 'None' else None
+                    )
+                
+                # Other visualization options remain unchanged
+                elif selected_option == 'Correlation Heatmap':
                     if selected_features and len(selected_features) > 1:
                         create_correlation_heatmap(df_viz, selected_features)
                     else:
@@ -913,13 +998,6 @@ def main():
                         create_multi_axis_violin_plots(df_viz, selected_features)
                     else:
                         st.warning("Please select features for violin plot analysis.")
-                elif selected_option == 'Rock Strength Comparison':
-                    if rock_df is not None and 'rock_type' in locals() and selected_features:
-                        create_rock_strength_comparison_chart(df_viz, rock_df, rock_type, selected_features)
-                    else:
-                        st.warning("Please upload rock strength data, select a rock type, and choose features to view the comparison.")
-                elif selected_option == 'Thrust Force Plots':
-                    create_thrust_force_plots(df_viz, advance_rate_col)
 
                 if st.sidebar.button("Download Processed Data"):
                     csv = df_viz.to_csv(index=False)
