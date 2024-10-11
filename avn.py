@@ -258,6 +258,18 @@ def create_rock_strength_comparison_chart(df, rock_df, rock_type, selected_featu
     except Exception as e:
         st.error(f"Error creating rock strength comparison chart: {e}")
 
+
+
+def rename_columns(df, working_pressure_col, revolution_col, distance_col, advance_rate_col):
+    column_mapping = {
+        working_pressure_col: 'Working pressure [bar]',
+        revolution_col: 'Revolution [rpm]',
+        distance_col: 'Chainage [mm]',
+        advance_rate_col: 'Advance rate [mm/min]'
+    }
+    return df.rename(columns=column_mapping)
+
+
 # Updated function to visualize correlation heatmap with dynamic input
 def create_correlation_heatmap(df, selected_features):
     if len(selected_features) < 2:
