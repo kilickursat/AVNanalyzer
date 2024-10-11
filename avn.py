@@ -930,65 +930,9 @@ def main():
 
                 if selected_option == 'Rock Strength Comparison':
                     if rock_df is not None and 'rock_type' in locals() and selected_features:
-                        fig = go.Figure()
-                        colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4']
-                        
-                        rock_strength_params = rock_df.columns.tolist()
-                        machine_params = selected_features
-                        
-                        x_labels = []
-                        rock_strength_values = []
-                        machine_param_means = []
-                        
-                        for param in rock_strength_params:
-                            if param in rock_df.columns:
-                                x_labels.append(param)
-                                rock_strength_values.append(rock_df.loc[rock_type, param])
-                                
-                                if param in df_viz.columns:
-                                    machine_param_means.append(df_viz[param].mean())
-                                else:
-                                    machine_param_means.append(None)
-                        
-                        for param in machine_params:
-                            if param not in x_labels and param in df_viz.columns:
-                                x_labels.append(param)
-                                rock_strength_values.append(None)
-                                machine_param_means.append(df_viz[param].mean())
-                        
-                        # Add rock strength bars
-                        fig.add_trace(go.Bar(
-                            x=x_labels,
-                            y=rock_strength_values,
-                            name=f'{rock_type} Rock Strength',
-                            marker_color=colors[0],
-                            opacity=0.7
-                        ))
-                        
-                        # Add machine parameter mean bars
-                        fig.add_trace(go.Bar(
-                            x=x_labels,
-                            y=machine_param_means,
-                            name='Machine Parameter Mean',
-                            marker_color=colors[1],
-                            opacity=0.7
-                        ))
-                        
-                        fig.update_layout(
-                            title=f'Rock Strength vs Machine Parameters: {rock_type}',
-                            barmode='group',
-                            height=600,
-                            width=1000,
-                            showlegend=True,
-                            xaxis_title="Parameters",
-                            yaxis_title="Values"
-                        )
-                        
-                        st.plotly_chart(fig)
+                        create_rock_strength_comparison_chart(df_viz, rock_df, rock_type, selected_features)
                     else:
                         st.warning("Please upload rock strength data, select a rock type, and choose features to view the comparison.")
-
-
                 
                 elif selected_option == 'Thrust Force Plots':
                     create_thrust_force_plots(
@@ -1013,7 +957,9 @@ def main():
                         st.warning("Please select features to visualize over time.")
                 elif selected_option == 'Pressure Distribution' and time_column:
                     if working_pressure_col and working_pressure_col != 'None':
-                        create_pressure_distribution_polar_plot(df_viz, working_pressure_col, time_column)
+                        renamed_pressure_col = 'Working pressure [bar]'
+                        st.write(f"Debug: Available columns in df_viz: {df_viz.columns.tolist()}")
+                        create_pressure_distribution_polar_plot(df_viz, renamed_pressure_col, time_column)
                     else:
                         st.warning("Please select a valid working pressure column.")
                 elif selected_option == 'Parameters vs Chainage':
