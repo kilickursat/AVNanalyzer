@@ -869,24 +869,20 @@ def main():
                 n1 = st.sidebar.number_input("Enter n1 value (revolution 1/min)", min_value=0.0, value=1.0, step=0.1)
                 torque_constant = st.sidebar.number_input("Enter torque constant", min_value=0.0, value=1.0, step=0.1)
 
-                # Calculate derived features including Penetration Rate
                 if working_pressure_col != 'None' and revolution_col != 'None':
                     df = calculate_derived_features(df, working_pressure_col, revolution_col, n1, torque_constant, selected_distance)
                     
-                    # Explicitly calculate Penetration Rate
                     if 'Average Speed (mm/min)' in df.columns:
                         df['Penetration Rate [mm/rev]'] = df.apply(
                             lambda row: calculate_penetration_rate(row, revolution_col), axis=1
                         )
 
-                # Rename columns after calculating derived features
                 df_viz = rename_columns(df.copy(), working_pressure_col, revolution_col, selected_distance, advance_rate_col)
 
                 all_features = df_viz.columns.tolist()
                 
                 time_column = get_time_column(df_viz)
 
-                # Define visualization options
                 options = ['Statistical Summary', 'Parameters vs Chainage', 'Box Plots', 'Violin Plots', 'Thrust Force Plots', 'Correlation Heatmap']
                 if time_column:
                     options.extend(['Features vs Time', 'Pressure Distribution'])
@@ -895,7 +891,6 @@ def main():
 
                 selected_option = st.sidebar.radio("Choose visualization", options)
 
-                # Feature selection for visualizations that need it
                 if selected_option not in ['Pressure Distribution', 'Thrust Force Plots']:
                     default_features = []
                     if 'Calculated torque [kNm]' in all_features:
@@ -925,30 +920,47 @@ def main():
                         fig = go.Figure()
                         colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4']
                         
-                        for i, feature in enumerate(selected_features):
-                            # Machine data histogram
-                            fig.add_trace(go.Histogram(
-                                x=df_viz[feature],
-                                name=f'{feature} Distribution',
-                                marker_color=colors[i % len(colors)],
-                                opacity=0.7
-                            ))
-                            
-                            # Add rock strength reference lines if available
-                            if feature in rock_df.columns:
-                                fig.add_vline(
-                                    x=rock_df.loc[rock_type, feature],
-                                    line_dash="dash",
-                                    line_color=colors[i % len(colors)],
-                                    annotation_text=f"{rock_type} {feature}"
-                                )
+                        rock_strength_params = rock_df.columns.tolist()
+                        x_labels = []
+                        rock_strength_values = []
+                        machine_param_means = []
+                        
+                        for param in rock_strength_params:
+                            if param in rock_df.columns:
+                                x_labels.append(param)
+                                rock_strength_values.append(rock_df.loc[rock_type, param])
+                                
+                                if param in df_viz.columns:
+                                    machine_param_means.append(df_viz[param].mean())
+                                else:
+                                    machine_param_means.append(None)
+                        
+                        # Add rock strength bars
+                        fig.add_trace(go.Bar(
+                            x=x_labels,
+                            y=rock_strength_values,
+                            name=f'{rock_type} Rock Strength',
+                            marker_color=colors[0],
+                            opacity=0.7
+                        ))
+                        
+                        # Add machine parameter mean bars
+                        fig.add_trace(go.Bar(
+                            x=x_labels,
+                            y=machine_param_means,
+                            name='Machine Parameter Mean',
+                            marker_color=colors[1],
+                            opacity=0.7
+                        ))
                         
                         fig.update_layout(
-                            title=f'Parameter Distribution vs {rock_type} Rock Strength',
-                            barmode='overlay',
+                            title=f'Rock Strength vs Machine Parameters: {rock_type}',
+                            barmode='group',
                             height=600,
                             width=1000,
-                            showlegend=True
+                            showlegend=True,
+                            xaxis_title="Parameters",
+                            yaxis_title="Values"
                         )
                         
                         st.plotly_chart(fig)
@@ -956,13 +968,11 @@ def main():
                         st.warning("Please upload rock strength data, select a rock type, and choose features to view the comparison.")
                 
                 elif selected_option == 'Thrust Force Plots':
-                    # Ensure advance rate column is properly passed
                     create_thrust_force_plots(
                         df_viz, 
                         'Advance rate [mm/min]' if advance_rate_col != 'None' else None
                     )
                 
-                # Other visualization options remain unchanged
                 elif selected_option == 'Correlation Heatmap':
                     if selected_features and len(selected_features) > 1:
                         create_correlation_heatmap(df_viz, selected_features)
@@ -980,7 +990,11 @@ def main():
                         st.warning("Please select features to visualize over time.")
                 elif selected_option == 'Pressure Distribution' and time_column:
                     if working_pressure_col and working_pressure_col != 'None':
-                        create_pressure_distribution_polar_plot(df_viz, working_pressure_col, time_column)
+                        # Ensure the working pressure column exists in df_viz
+                        if working_pressure_col in df_viz.columns:
+                            create_pressure_distribution_polar_plot(df_viz, working_pressure_col, time_column)
+                        else:
+                            st.warning(f"The selected working pressure column '{working_pressure_col}' is not available in the processed data. Please check the column name.")
                     else:
                         st.warning("Please select a valid working pressure column.")
                 elif selected_option == 'Parameters vs Chainage':
