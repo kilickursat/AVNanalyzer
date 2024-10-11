@@ -402,6 +402,16 @@ def create_features_vs_time(df, selected_features, time_column):
 # Updated function to create Pressure Distribution Over Time Polar Plot with Plotly
 def create_pressure_distribution_polar_plot(df, pressure_column, time_column):
     try:
+        # Check if the pressure column exists, if not, try to find a similar column
+        if pressure_column not in df.columns:
+            potential_columns = [col for col in df.columns if pressure_column.lower() in col.lower()]
+            if potential_columns:
+                pressure_column = potential_columns[0]
+                st.warning(f"Original pressure column not found. Using '{pressure_column}' instead.")
+            else:
+                st.error(f"Could not find a suitable pressure column. Please check your data.")
+                return
+
         df[pressure_column] = pd.to_numeric(df[pressure_column], errors='coerce')
 
         # Normalize time to 360 degrees
@@ -447,15 +457,6 @@ def create_pressure_distribution_polar_plot(df, pressure_column, time_column):
         st.plotly_chart(fig)
     except Exception as e:
         st.error(f"Error creating pressure distribution polar plot: {e}")
-
-def rename_columns(df, working_pressure_col, revolution_col, distance_col, advance_rate_col):
-    column_mapping = {
-        working_pressure_col: 'Working pressure [bar]',
-        revolution_col: 'Revolution [rpm]',
-        distance_col: 'Chainage [mm]',
-        advance_rate_col: 'Advance rate [mm/min]'
-    }
-    return df.rename(columns=column_mapping)
 
 
 
@@ -921,6 +922,8 @@ def main():
                         colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4']
                         
                         rock_strength_params = rock_df.columns.tolist()
+                        machine_params = selected_features
+                        
                         x_labels = []
                         rock_strength_values = []
                         machine_param_means = []
@@ -934,6 +937,12 @@ def main():
                                     machine_param_means.append(df_viz[param].mean())
                                 else:
                                     machine_param_means.append(None)
+                        
+                        for param in machine_params:
+                            if param not in x_labels and param in df_viz.columns:
+                                x_labels.append(param)
+                                rock_strength_values.append(None)
+                                machine_param_means.append(df_viz[param].mean())
                         
                         # Add rock strength bars
                         fig.add_trace(go.Bar(
@@ -966,6 +975,8 @@ def main():
                         st.plotly_chart(fig)
                     else:
                         st.warning("Please upload rock strength data, select a rock type, and choose features to view the comparison.")
+
+
                 
                 elif selected_option == 'Thrust Force Plots':
                     create_thrust_force_plots(
@@ -990,11 +1001,7 @@ def main():
                         st.warning("Please select features to visualize over time.")
                 elif selected_option == 'Pressure Distribution' and time_column:
                     if working_pressure_col and working_pressure_col != 'None':
-                        # Ensure the working pressure column exists in df_viz
-                        if working_pressure_col in df_viz.columns:
-                            create_pressure_distribution_polar_plot(df_viz, working_pressure_col, time_column)
-                        else:
-                            st.warning(f"The selected working pressure column '{working_pressure_col}' is not available in the processed data. Please check the column name.")
+                        create_pressure_distribution_polar_plot(df_viz, working_pressure_col, time_column)
                     else:
                         st.warning("Please select a valid working pressure column.")
                 elif selected_option == 'Parameters vs Chainage':
