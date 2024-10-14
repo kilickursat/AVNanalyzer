@@ -21,6 +21,19 @@ def clean_numeric_column(df, column_name):
     df[column_name] = df[column_name].fillna(df[column_name].median())
     return df
 
+
+
+def safe_selectbox(label, options, suggested_option):
+    try:
+        if suggested_option and suggested_option in options:
+            index = options.index(suggested_option)
+        else:
+            index = 0  # Default to 'None'
+    except ValueError:
+        index = 0  # Default to 'None' if suggested_option is not in options
+    return st.sidebar.selectbox(label, options, index=index)
+
+
 # Advanced rate calculation function
 def calculate_advance_rate_and_stats(df, distance_column, time_column):
     try:
