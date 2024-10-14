@@ -28,31 +28,20 @@ from datetime import datetime
 def calculate_advance_rate_and_stats(df, distance_column, time_column):
     try:
         df[distance_column] = pd.to_numeric(df[distance_column], errors='coerce')
-
-        # Try to convert time column to datetime if it's not already
-        if not pd.api.types.is_datetime64_any_dtype(df[time_column]):
-            try:
-                df[time_column] = pd.to_datetime(df[time_column], format='%m/%d/%Y %I:%M:%S %p', errors='coerce')
-            except:
-                # If conversion fails, assume it's numeric and proceed as before
-                df[time_column] = pd.to_numeric(df[time_column], errors='coerce')
+        df[time_column] = pd.to_numeric(df[time_column], errors='coerce')
 
         if len(df) > 1:
             weg = round(df[distance_column].max() - df[distance_column].min(), 2)
-            if pd.api.types.is_datetime64_any_dtype(df[time_column]):
-                zeit = (df[time_column].max() - df[time_column].min()).total_seconds() / 60  # Convert to minutes
-            else:
-                zeit = round(df[time_column].max() - df[time_column].min(), 2)
+            zeit = round(df[time_column].max() - df[time_column].min(), 2)
         else:
             weg = round(df[distance_column].iloc[0], 2)
-            zeit = 0 if pd.api.types.is_datetime64_any_dtype(df[time_column]) else round(df[time_column].iloc[0], 2)
+            zeit = round(df[time_column].iloc[0], 2)
 
         # Check if zeit is in seconds or microseconds and convert to minutes
-        if not pd.api.types.is_datetime64_any_dtype(df[time_column]):
-            if zeit > 1000:  # Assuming it's in microseconds if it's a large number
-                zeit = zeit * (0.000001 / 60)
-            elif zeit > 100:  # Assuming it's in seconds if it's between 100 and 1000
-                zeit = zeit / 60
+        if zeit > 1000:  # Assuming it's in microseconds if it's a large number
+            zeit = zeit * (0.000001 / 60)
+        elif zeit > 100:  # Assuming it's in seconds if it's between 100 and 1000
+            zeit = zeit / 60
 
         average_speed = round(weg / zeit, 2) if zeit != 0 else 0
 
