@@ -875,32 +875,12 @@ def main():
                 if working_pressure_col != 'None' and revolution_col != 'None':
                     df = calculate_derived_features(df, working_pressure_col, revolution_col, n1, torque_constant, selected_distance)
                     
-                    # Calculate average speed
-                    time_column = get_time_column(df)
-                    if time_column and selected_distance:
-                        result, average_speed = calculate_advance_rate_and_stats(df, selected_distance, time_column)
-                        df['Average Speed (mm/min)'] = average_speed
-                        st.success(f"Average Speed calculated: {average_speed:.2f} mm/min")
-
-                    # Calculate penetration rate
-                    if advance_rate_col != 'None' and revolution_col != 'None':
+                    if 'Average Speed (mm/min)' in df.columns:
                         df['Penetration Rate [mm/rev]'] = df.apply(
-                            lambda row: calculate_penetration_rate(row, advance_rate_col, revolution_col), axis=1
+                            lambda row: calculate_penetration_rate(row, revolution_col), axis=1
                         )
-                        st.success("Penetration Rate calculated successfully")
-                    elif 'Average Speed (mm/min)' in df.columns and revolution_col != 'None':
-                        df['Penetration Rate [mm/rev]'] = df.apply(
-                            lambda row: calculate_penetration_rate(row, 'Average Speed (mm/min)', revolution_col), axis=1
-                        )
-                        st.success("Penetration Rate calculated successfully using Average Speed")
-
-                    # Log the columns after calculations
-                    st.write("Columns after calculations:", df.columns.tolist())
 
                 df_viz = rename_columns(df.copy(), working_pressure_col, revolution_col, selected_distance, advance_rate_col)
-
-                # Log the columns after renaming
-                st.write("Columns after renaming:", df_viz.columns.tolist())
 
                 all_features = df_viz.columns.tolist()
                 
@@ -1007,6 +987,8 @@ def main():
     st.markdown("---")
     st.markdown("© 2024 Herrenknecht AG. All rights reserved.")
     st.markdown("Created by Kursat Kilic - Geotechnical Digitalization")
+    
+
     
 if __name__ == "__main__":
     main()
