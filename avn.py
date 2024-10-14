@@ -54,13 +54,21 @@ def calculate_advance_rate_and_stats(df, distance_column, time_column):
         return None, 0
 
 def calculate_penetration_rate(row, speed_col, revolution_col):
-        speed = row[speed_col]
-        revolution = row[revolution_col]
-
-        if pd.isna(speed) or pd.isna(revolution) or revolution == 0:
+    try:
+        speed = row['Average Speed (mm/min)']
+        revolution = row['Revolution [rpm]']
+        
+        if pd.isna(speed) or pd.isna(revolution):
             return np.nan
+        elif revolution == 0:
+            return np.inf if speed != 0 else 0
         else:
             return round(speed / revolution, 4)
+            
+    except Exception as e:
+        st.error(f"Error in penetration rate calculation: {e}")
+        return np.nan
+
 
 
 # Function to calculate torque
