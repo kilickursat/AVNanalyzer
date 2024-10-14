@@ -187,54 +187,42 @@ def preprocess_rock_strength_data(df):
 # Updated function to create comparison chart for machine parameters vs rock strength
 def create_rock_strength_comparison_chart(df, rock_df, rock_type, selected_features):
     try:
-        # Create a new figure for Plotly
-        fig = go.Figure()
-        
-        # Define color palette for different parameters
-        colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEEAD', '#D4A5A5']
-        
-        # Create histograms only for selected features
-        for i, feature in enumerate(selected_features):
-            if feature in df.columns:
-                # Calculate optimal number of bins using Sturges' rule
-                n_bins = int(np.ceil(np.log2(len(df[feature].dropna())) + 1))
-                
-                # Add histogram for machine data
-                fig.add_trace(go.Histogram(
-                    x=df[feature],
-                    name=f'{feature}',
-                    nbinsx=n_bins,
-                    marker_color=colors[i % len(colors)],
-                    opacity=0.7,
-                    showlegend=True
-                ))
-                
-                # Add rock strength reference line if available
-                if feature in rock_df.columns:
-                    rock_strength_value = rock_df.loc[rock_type, feature]
-                    if pd.notna(rock_strength_value):
-                        fig.add_vline(
-                            x=rock_strength_value,
-                            line_dash="dash",
-                            line_color=colors[i % len(colors)],
-                            annotation_text=f"{rock_type} Reference",
-                            annotation_position="top right"
-                        )
+        # Prepare data for plotting
+        rock_strength_data = rock_df.loc[rock_type].dropna()
+        machine_data = df[selected_features].mean()
 
-        # Update layout with improved styling
+        # Combine rock strength and machine data
+        combined_data = pd.concat([rock_strength_data, machine_data])
+
+        # Create the bar chart
+        fig = go.Figure()
+
+        # Add bars for rock strength parameters
+        fig.add_trace(go.Bar(
+            x=rock_strength_data.index,
+            y=rock_strength_data.values,
+            name='Rock Strength',
+            marker_color='#FF6B6B'
+        ))
+
+        # Add bars for machine parameters
+        fig.add_trace(go.Bar(
+            x=machine_data.index,
+            y=machine_data.values,
+            name='Machine Parameters',
+            marker_color='#4ECDC4'
+        ))
+
+        # Update layout
         fig.update_layout(
-            title=f'Parameter Distribution vs {rock_type} Rock Strength',
-            xaxis_title="Parameter Values",
-            yaxis_title="Frequency",
-            barmode='overlay',
+            title=f'Rock Strength ({rock_type}) vs Machine Parameters Comparison',
+            xaxis_title="Parameters",
+            yaxis_title="Values",
+            barmode='group',
             height=600,
             width=1000,
             showlegend=True,
             template='plotly_white',
-            bargap=0.1,
-            # Add hover mode for better interactivity
-            hovermode='x unified',
-            # Improve legend positioning and style
             legend=dict(
                 yanchor="top",
                 y=0.99,
@@ -246,18 +234,17 @@ def create_rock_strength_comparison_chart(df, rock_df, rock_type, selected_featu
             )
         )
 
-        # Add better hover template
+        # Improve hover information
         fig.update_traces(
             hovertemplate="<b>%{x}</b><br>" +
-                         "Count: %{y}<br>" +
-                         "<extra></extra>"  # This removes the secondary box
+                         "Value: %{y:.2f}<br>" +
+                         "<extra></extra>"
         )
 
-        st.plotly_chart(fig)
-        
+        return fig
     except Exception as e:
         st.error(f"Error creating rock strength comparison chart: {e}")
-
+        return None
 
 
 def rename_columns(df, working_pressure_col, revolution_col, distance_col, advance_rate_col):
@@ -919,12 +906,29 @@ def main():
                         default=default_features
                     )
 
-                rock_df = None
-                if rock_strength_file and selected_option == 'Rock Strength Comparison':
-                    rock_strength_data = read_rock_strength_data(rock_strength_file)
-                    if rock_strength_data is not None:
+
+
+               rock_df = None
+               if rock_strength_file and selected_option == 'Rock Strength Comparison':
+                   rock_strength_data = read_rock_strength_data(rock_strength_file)
+                   if rock_strength_data is not None:
                         rock_df = preprocess_rock_strength_data(rock_strength_data)
                         rock_type = st.sidebar.selectbox("Select Rock Type", rock_df.index)
+                
+                        if rock_df is not None and rock_type and selected_features:
+                            fig = create_rock_strength_comparison_chart(df_viz, rock_df, rock_type, selected_features)
+                            if fig is not None:
+                                st.plotly_chart(fig)
+                        else:
+                            st.warning("Please ensure you've selected a rock type and at least one machine parameter for comparison.")
+                    else:
+                        st.warning("Error processing rock strength data. Please check your file.") 
+
+
+
+
+
+                
 
                 st.subheader(f"Visualization: {selected_option}")
 
