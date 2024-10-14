@@ -34,7 +34,11 @@ def calculate_advance_rate_and_stats(df, distance_column, time_column):
             weg = round(df[distance_column].iloc[0], 2)
             zeit = round(df[time_column].iloc[0], 2)
 
-        zeit = zeit * (0.000001 / 60)  # Convert to minutes
+        # Ensure zeit is in minutes
+        if zeit > 1000:  # Assuming it's in microseconds if it's a large number
+            zeit = zeit * (0.000001 / 60)
+        elif zeit > 100:  # Assuming it's in seconds if it's between 100 and 1000
+            zeit = zeit / 60
 
         average_speed = round(weg / zeit, 2) if zeit != 0 else 0
 
@@ -49,9 +53,9 @@ def calculate_advance_rate_and_stats(df, distance_column, time_column):
         st.error(f"Error calculating advance rate stats: {str(e)}")
         return None, 0
 
-def calculate_penetration_rate(row, revolution_col):
+def calculate_penetration_rate(row, speed_col, revolution_col):
     try:
-        speed = row['Average Speed (mm/min)']
+        speed = row[speed_col]
         revolution = row[revolution_col]
 
         if pd.isna(speed) or pd.isna(revolution) or revolution == 0:
@@ -874,11 +878,16 @@ def main():
                         st.success(f"Average Speed calculated: {average_speed:.2f} mm/min")
 
                     # Calculate penetration rate
-                    if 'Average Speed (mm/min)' in df.columns and revolution_col != 'None':
+                    if advance_rate_col != 'None' and revolution_col != 'None':
                         df['Penetration Rate [mm/rev]'] = df.apply(
-                            lambda row: calculate_penetration_rate(row, revolution_col), axis=1
+                            lambda row: calculate_penetration_rate(row, advance_rate_col, revolution_col), axis=1
                         )
                         st.success("Penetration Rate calculated successfully")
+                    elif 'Average Speed (mm/min)' in df.columns and revolution_col != 'None':
+                        df['Penetration Rate [mm/rev]'] = df.apply(
+                            lambda row: calculate_penetration_rate(row, 'Average Speed (mm/min)', revolution_col), axis=1
+                        )
+                        st.success("Penetration Rate calculated successfully using Average Speed")
 
                     # Log the columns after calculations
                     st.write("Columns after calculations:", df.columns.tolist())
