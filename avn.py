@@ -34,14 +34,10 @@ def calculate_advance_rate_and_stats(df, distance_column, time_column):
             weg = round(df[distance_column].max() - df[distance_column].min(), 2)
             zeit = round(df[time_column].max() - df[time_column].min(), 2)
         else:
-            weg = round(df[distance_column].iloc[0], 2)
-            zeit = round(df[time_column].iloc[0], 2)
+            weg = df[distance_column].iloc[0]
+            zeit = df[time_column].iloc[0]
 
-        # Check if zeit is in seconds or microseconds and convert to minutes
-        if zeit > 1000:  # Assuming it's in microseconds if it's a large number
-            zeit = zeit * (0.000001 / 60)
-        elif zeit > 100:  # Assuming it's in seconds if it's between 100 and 1000
-            zeit = zeit / 60
+        zeit = zeit * (0.000001 / 60)
 
         average_speed = round(weg / zeit, 2) if zeit != 0 else 0
 
@@ -56,22 +52,21 @@ def calculate_advance_rate_and_stats(df, distance_column, time_column):
         st.error(f"Error calculating advance rate stats: {str(e)}")
         return None, 0
 
-def calculate_penetration_rate(row, speed_col, revolution_col):
+
+def calculate_penetration_rate(row, revolution_col):
     try:
-        speed = row[speed_col]
+        speed = row['Average Speed (mm/min)']
         revolution = row[revolution_col]
-        
+
         if pd.isna(speed) or pd.isna(revolution):
             return np.nan
         elif revolution == 0:
             return np.inf if speed != 0 else 0
         else:
             return round(speed / revolution, 4)
-            
     except Exception as e:
-        st.error(f"Error in penetration rate calculation: {e}")
+        st.error(f"Error calculating penetration rate: {str(e)}")
         return np.nan
-
 
 
 # Function to calculate torque
@@ -787,16 +782,37 @@ def safe_selectbox(label, options, suggested_option):
 def calculate_advance_rate_and_stats(df, distance_column, time_column):
     try:
         df[distance_column] = pd.to_numeric(df[distance_column], errors='coerce')
-        df[time_column] = pd.to_numeric(df[time_column], errors='coerce')
+        
+        # Check if the time column is already in datetime format
+        if not pd.api.types.is_datetime64_any_dtype(df[time_column]):
+            # Attempt to parse datetime with multiple possible formats
+            df[time_column] = pd.to_datetime(df[time_column], errors='coerce', infer_datetime_format=True)
 
         if len(df) > 1:
             weg = round(df[distance_column].max() - df[distance_column].min(), 2)
-            zeit = round(df[time_column].max() - df[time_column].min(), 2)
+            
+            if pd.api.types.is_datetime64_any_dtype(df[time_column]):
+                zeit = (df[time_column].max() - df[time_column].min()).total_seconds() / 60  # Convert to minutes
+            else:
+                zeit = round(df[time_column].max() - df[time_column].min(), 2)
+
+                # Check if zeit is in seconds or microseconds and convert to minutes
+                if zeit > 1000:  # Assuming it's in microseconds if it's a large number
+                    zeit = zeit * (0.000001 / 60)
+                elif zeit > 100:  # Assuming it's in seconds if it's between 100 and 1000
+                    zeit = zeit / 60
         else:
             weg = df[distance_column].iloc[0]
-            zeit = df[time_column].iloc[0]
+            if pd.api.types.is_datetime64_any_dtype(df[time_column]):
+                zeit = 0  # Only one data point, time difference is zero
+            else:
+                zeit = df[time_column].iloc[0]
 
-        zeit = zeit * (0.000001 / 60)
+                # Check and convert if necessary
+                if zeit > 1000:
+                    zeit = zeit * (0.000001 / 60)
+                elif zeit > 100:
+                    zeit = zeit / 60
 
         average_speed = round(weg / zeit, 2) if zeit != 0 else 0
 
@@ -879,12 +895,13 @@ def main():
                     
                     time_column = get_time_column(df)
                     if time_column:
-                        result,average_speed = calculate_advance_rate_and_stats(df, selected_distance, time_column)
+                        result, average_speed = calculate_advance_rate_and_stats(df, selected_distance, time_column)
                         df['Average Speed (mm/min)'] = average_speed
                         
                     if 'Average Speed (mm/min)' in df.columns:
-                        df['Penetration Rate [mm/rev]'] =df.apply(
-                              lambda row: calculate_penetration_rate(row, 'Average Speed (mm/min)', revolution_col), axis=1)
+                        df['Penetration Rate [mm/rev]'] = df.apply(
+                            lambda row: calculate_penetration_rate(row, revolution_col), axis=1
+                        )
 
                 df_viz = rename_columns(df.copy(), working_pressure_col, revolution_col, selected_distance, advance_rate_col)
 
