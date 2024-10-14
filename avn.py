@@ -51,10 +51,10 @@ def calculate_advance_rate_and_stats(df, distance_column, time_column):
         return None, 0
 
 # Penetration rate calculation function
-def calculate_penetration_rate(row):
+def calculate_penetration_rate(row,revolution_col, advance_rate_col):
     try:
-        speed = row['Average Speed (mm/min)']
-        revolution = row['Revolution [rpm]']
+        speed = row[advance_rate_col]
+        revolution = row[revolution_col]
         
         if pd.isna(speed) or pd.isna(revolution):
             return np.nan
@@ -110,7 +110,7 @@ def calculate_derived_features(df, working_pressure_col, revolution_col, n1, tor
             df['Average Speed (mm/min)'] = average_speed
             
             if revolution_col is not None:
-                df['Penetration Rate [mm/rev]'] = df.apply(lambda row: calculate_penetration_rate(row), axis=1)
+                df['Penetration Rate [mm/rev]'] = df.apply(lambda row: calculate_penetration_rate(row,revolution_col, advance_rate_col), axis=1)
         
         return df
         
@@ -859,7 +859,7 @@ def main():
                     
                     if 'Average Speed (mm/min)' in df.columns:
                         df['Penetration Rate [mm/rev]'] = df.apply(
-                            lambda row: calculate_penetration_rate(row), axis=1
+                            lambda row: calculate_penetration_rate(row,revolution_col, advance_rate_col), axis=1
                         )
 
                 df_viz = rename_columns(df.copy(), working_pressure_col, revolution_col, selected_distance, advance_rate_col)
