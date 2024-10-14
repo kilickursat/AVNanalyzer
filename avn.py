@@ -34,7 +34,7 @@ def calculate_advance_rate_and_stats(df, distance_column, time_column):
             weg = round(df[distance_column].iloc[0], 2)
             zeit = round(df[time_column].iloc[0], 2)
 
-        # Ensure zeit is in minutes
+        # Check if zeit is in seconds or microseconds and convert to minutes
         if zeit > 1000:  # Assuming it's in microseconds if it's a large number
             zeit = zeit * (0.000001 / 60)
         elif zeit > 100:  # Assuming it's in seconds if it's between 100 and 1000
@@ -55,8 +55,8 @@ def calculate_advance_rate_and_stats(df, distance_column, time_column):
 
 def calculate_penetration_rate(row, speed_col, revolution_col):
     try:
-        speed = row['Average Speed (mm/min)']
-        revolution = row['Revolution [rpm]']
+        speed = row[speed_col]
+        revolution = row[revolution_col]
         
         if pd.isna(speed) or pd.isna(revolution):
             return np.nan
@@ -769,7 +769,6 @@ def create_thrust_force_plots(df, advance_rate_col):
         st.error(f"Error creating thrust force plots: {e}")
 
 
-
 def safe_selectbox(label, options, suggested_option):
     try:
         if suggested_option and suggested_option in options:
@@ -875,10 +874,14 @@ def main():
                 if working_pressure_col != 'None' and revolution_col != 'None':
                     df = calculate_derived_features(df, working_pressure_col, revolution_col, n1, torque_constant, selected_distance)
                     
+                    time_column = get_time_column(df)
+                    if time_column:
+                        result,average_speed = calculate_advance_rate_and_stats(df, selected_distance, time_column)
+                        df['Average Speed (mm/min)'] = average_speed
+                        
                     if 'Average Speed (mm/min)' in df.columns:
-                        df['Penetration Rate [mm/rev]'] = df.apply(
-                            lambda row: calculate_penetration_rate(row, revolution_col), axis=1
-                        )
+                        df['Penetration Rate [mm/rev]'] =df.apply(
+                              lambda row: calculate_penetration_rate(row, 'Average Speed (mm/min)', revolution_col), axis=1)
 
                 df_viz = rename_columns(df.copy(), working_pressure_col, revolution_col, selected_distance, advance_rate_col)
 
