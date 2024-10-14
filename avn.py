@@ -24,47 +24,45 @@ def clean_numeric_column(df, column_name):
 # Advanced rate calculation function
 def calculate_advance_rate_and_stats(df, distance_column, time_column):
     try:
-        if not all(col in df.columns for col in [distance_column, time_column]):
-            raise ValueError(f"Required columns not found in DataFrame")
-            
+        df[distance_column] = pd.to_numeric(df[distance_column], errors='coerce')
+        df[time_column] = pd.to_numeric(df[time_column], errors='coerce')
+
         if len(df) > 1:
             weg = round(df[distance_column].max() - df[distance_column].min(), 2)
             zeit = round(df[time_column].max() - df[time_column].min(), 2)
         else:
             weg = round(df[distance_column].iloc[0], 2)
             zeit = round(df[time_column].iloc[0], 2)
-            
-        zeit = zeit * (0.000001 / 60)
-        
+
+        zeit = zeit * (0.000001 / 60)  # Convert to minutes
+
         average_speed = round(weg / zeit, 2) if zeit != 0 else 0
-        
+
         result = {
             "Total Distance (mm)": weg,
             "Total Time (min)": zeit,
             "Average Speed (mm/min)": average_speed
         }
-        
+
         return result, average_speed
-        
     except Exception as e:
-        st.error(f"Error in advance rate calculation: {e}")
+        st.error(f"Error calculating advance rate stats: {str(e)}")
         return None, 0
 
 # Penetration rate calculation function
-def calculate_penetration_rate(row):
+def calculate_penetration_rate(row, revolution_col):
     try:
         speed = row['Average Speed (mm/min)']
-        revolution = row['Revolution [rpm]']
-        
+        revolution = row[revolution_col]
+
         if pd.isna(speed) or pd.isna(revolution):
             return np.nan
         elif revolution == 0:
             return np.inf if speed != 0 else 0
         else:
             return round(speed / revolution, 4)
-            
     except Exception as e:
-        st.error(f"Error in penetration rate calculation: {e}")
+        st.error(f"Error calculating penetration rate: {str(e)}")
         return np.nan
 
 # Function to calculate torque
@@ -686,7 +684,6 @@ def get_time_column(df):
 
 def create_thrust_force_plots(df, advance_rate_col):
     try:
-        # Updated column identification with more comprehensive keywords
         thrust_force_col = next((col for col in df.columns 
                                if any(kw in col.lower() for kw in [
                                    'thrust force', 'vorschubkraft', 'kraft', 'kraft_max', 
@@ -698,14 +695,12 @@ def create_thrust_force_plots(df, advance_rate_col):
             st.warning("Thrust force column not found in the dataset.")
             return
 
-        # Create subplots
         fig = make_subplots(rows=3, cols=1, 
                            subplot_titles=("Thrust Force vs Penetration Rate", 
                                          "Thrust Force vs Average Speed", 
                                          "Thrust Force vs Advance Rate"),
                            vertical_spacing=0.1)
 
-        # Plot 1: Thrust Force vs Penetration Rate
         if 'Penetration Rate [mm/rev]' in df.columns:
             mask = df['Penetration Rate [mm/rev]'].notna()
             fig.add_trace(go.Scatter(
@@ -718,7 +713,6 @@ def create_thrust_force_plots(df, advance_rate_col):
         else:
             st.warning("Penetration Rate [mm/rev] column not found in the dataset.")
 
-        # Plot 2: Thrust Force vs Average Speed
         if 'Average Speed (mm/min)' in df.columns:
             mask = df['Average Speed (mm/min)'].notna()
             fig.add_trace(go.Scatter(
@@ -731,7 +725,6 @@ def create_thrust_force_plots(df, advance_rate_col):
         else:
             st.warning("Average Speed (mm/min) column not found in the dataset.")
 
-        # Plot 3: Thrust Force vs Selected Advance Rate
         if advance_rate_col and advance_rate_col in df.columns:
             mask = df[advance_rate_col].notna()
             fig.add_trace(go.Scatter(
@@ -744,7 +737,6 @@ def create_thrust_force_plots(df, advance_rate_col):
         else:
             st.warning("Selected advance rate column not available for plotting.")
 
-        # Update layout with improved styling
         fig.update_layout(
             height=1200, 
             width=800, 
@@ -753,7 +745,6 @@ def create_thrust_force_plots(df, advance_rate_col):
             template='plotly_white'
         )
         
-        # Update axes labels with proper units
         fig.update_xaxes(title_text="Penetration Rate [mm/rev]", row=1, col=1)
         fig.update_xaxes(title_text="Average Speed [mm/min]", row=2, col=1)
         fig.update_xaxes(title_text=advance_rate_col if advance_rate_col else "Advance Rate [mm/min]", row=3, col=1)
@@ -872,7 +863,14 @@ def main():
                 if working_pressure_col != 'None' and revolution_col != 'None':
                     df = calculate_derived_features(df, working_pressure_col, revolution_col, n1, torque_constant, selected_distance)
                     
-                    if 'Average Speed (mm/min)' in df.columns:
+                    # Calculate average speed
+                    time_column = get_time_column(df)
+                    if time_column and selected_distance:
+                        result, average_speed = calculate_advance_rate_and_stats(df, selected_distance, time_column)
+                        df['Average Speed (mm/min)'] = average_speed
+
+                    # Calculate penetration rate
+                    if 'Average Speed (mm/min)' in df.columns and revolution_col != 'None':
                         df['Penetration Rate [mm/rev]'] = df.apply(
                             lambda row: calculate_penetration_rate(row, revolution_col), axis=1
                         )
