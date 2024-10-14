@@ -61,9 +61,7 @@ def calculate_penetration_rate(row, speed_col, revolution_col):
             return np.nan
         else:
             return round(speed / revolution, 4)
-    except Exception as e:
-        st.error(f"Error calculating penetration rate: {str(e)}")
-        return np.nan
+
 
 # Function to calculate torque
 def calculate_torque(working_pressure, torque_constant, current_speed=None, n1=None):
