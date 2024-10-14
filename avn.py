@@ -51,17 +51,20 @@ def calculate_advance_rate_and_stats(df, distance_column, time_column):
         return None, 0
 
 # Penetration rate calculation function
-def calculate_penetration_rate(row,revolution_col):
+def calculate_penetration_rate(row, revolution_col):
     try:
-        speed = row['Advance rate [mm/min]']
+        speed = row['Average Speed (mm/min)']
         revolution = row[revolution_col]
-        
+
         if pd.isna(speed) or pd.isna(revolution):
             return np.nan
         elif revolution == 0:
             return np.inf if speed != 0 else 0
         else:
             return round(speed / revolution, 4)
+    except Exception as e:
+        st.error(f"Error calculating penetration rate: {str(e)}")
+        return np.nan
             
     except Exception as e:
         st.error(f"Error in penetration rate calculation: {e}")
