@@ -821,7 +821,21 @@ def calculate_penetration_rate(row, revolution_col):
     except Exception as e:
         st.error(f"Error calculating penetration rate: {str(e)}")
         return np.nan
-
+        
+def validate_data(df):
+    required_columns = ['working pressure', 'revolution', 'advance rate', 'distance']
+    errors = []
+    
+    for col in required_columns:
+        if not any(col in c.lower() for c in df.columns):
+            errors.append(f"Missing required column: {col}")
+    
+    if errors:
+        for error in errors:
+            st.error(error)
+        return False
+    
+    return True
 # Main function
 def main():
     try:
