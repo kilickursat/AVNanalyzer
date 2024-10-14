@@ -906,97 +906,26 @@ def main():
                         default=default_features
                     )
 
-
-
-               rock_df = None
-               if rock_strength_file and selected_option == 'Rock Strength Comparison':
-                   rock_strength_data = read_rock_strength_data(rock_strength_file)
-                   if rock_strength_data is not None:
-                        rock_df = preprocess_rock_strength_data(rock_strength_data)
-                        rock_type = st.sidebar.selectbox("Select Rock Type", rock_df.index)
-                
-                        if rock_df is not None and rock_type and selected_features:
-                            fig = create_rock_strength_comparison_chart(df_viz, rock_df, rock_type, selected_features)
-                            if fig is not None:
-                                st.plotly_chart(fig)
-                        else:
-                            st.warning("Please ensure you've selected a rock type and at least one machine parameter for comparison.")
-                    else:
-                        st.warning("Error processing rock strength data. Please check your file.") 
-
-
-
-
-
-                
-
                 st.subheader(f"Visualization: {selected_option}")
 
                 if selected_option == 'Rock Strength Comparison':
-                    if rock_df is not None and 'rock_type' in locals() and selected_features:
-                        fig = go.Figure()
-                        colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4']
-                        
-                        for i, feature in enumerate(selected_features):
-                            if feature in df_viz.columns:
-                                # Calculate optimal number of bins using Sturges' rule
-                                n_bins = int(np.ceil(np.log2(len(df_viz[feature].dropna())) + 1))
-                                
-                                # Add histogram for machine data
-                                fig.add_trace(go.Histogram(
-                                    x=df_viz[feature],
-                                    name=f'{feature}',
-                                    nbinsx=n_bins,
-                                    marker_color=colors[i % len(colors)],
-                                    opacity=0.7,
-                                    showlegend=True
-                                ))
-                                
-                                # Add rock strength reference line if available
-                                if feature in rock_df.columns:
-                                    rock_strength_value = rock_df.loc[rock_type, feature]
-                                    if pd.notna(rock_strength_value):
-                                        fig.add_vline(
-                                            x=rock_strength_value,
-                                            line_dash="dash",
-                                            line_color=colors[i % len(colors)],
-                                            annotation_text=f"{rock_type} Reference",
-                                            annotation_position="top right"
-                                        )
+                    rock_df = None
+                    if rock_strength_file:
+                        rock_strength_data = read_rock_strength_data(rock_strength_file)
+                        if rock_strength_data is not None:
+                            rock_df = preprocess_rock_strength_data(rock_strength_data)
+                            rock_type = st.sidebar.selectbox("Select Rock Type", rock_df.index)
 
-                        # Update layout with improved styling
-                        fig.update_layout(
-                            title=f'Parameter Distribution vs {rock_type} Rock Strength',
-                            xaxis_title="Parameter Values",
-                            yaxis_title="Frequency",
-                            barmode='overlay',
-                            height=600,
-                            width=1000,
-                            showlegend=True,
-                            template='plotly_white',
-                            bargap=0.1,
-                            hovermode='x unified',
-                            legend=dict(
-                                yanchor="top",
-                                y=0.99,
-                                xanchor="right",
-                                x=0.99,
-                                bgcolor="rgba(255, 255, 255, 0.8)",
-                                bordercolor="rgba(0, 0, 0, 0.3)",
-                                borderwidth=1
-                            )
-                        )
-
-                        # Add better hover template
-                        fig.update_traces(
-                            hovertemplate="<b>%{x}</b><br>" +
-                                         "Count: %{y}<br>" +
-                                         "<extra></extra>"
-                        )
-
-                        st.plotly_chart(fig)
+                            if rock_df is not None and rock_type and selected_features:
+                                fig = create_rock_strength_comparison_chart(df_viz, rock_df, rock_type, selected_features)
+                                if fig is not None:
+                                    st.plotly_chart(fig)
+                            else:
+                                st.warning("Please ensure you've selected a rock type and at least one machine parameter for comparison.")
+                        else:
+                            st.warning("Error processing rock strength data. Please check your file.")
                     else:
-                        st.warning("Please upload rock strength data, select a rock type, and choose features to view the comparison.")
+                        st.warning("Please upload rock strength data to use this visualization.")
                 
                 elif selected_option == 'Thrust Force Plots':
                     create_thrust_force_plots(
