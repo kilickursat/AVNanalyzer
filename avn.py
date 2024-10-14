@@ -49,16 +49,13 @@ def calculate_advance_rate_and_stats(df, distance_column, time_column):
         st.error(f"Error calculating advance rate stats: {str(e)}")
         return None, 0
 
-# Penetration rate calculation function
 def calculate_penetration_rate(row, revolution_col):
     try:
         speed = row['Average Speed (mm/min)']
         revolution = row[revolution_col]
 
-        if pd.isna(speed) or pd.isna(revolution):
+        if pd.isna(speed) or pd.isna(revolution) or revolution == 0:
             return np.nan
-        elif revolution == 0:
-            return np.inf if speed != 0 else 0
         else:
             return round(speed / revolution, 4)
     except Exception as e:
@@ -155,6 +152,9 @@ def load_data(file):
         if df.empty:
             st.error("The uploaded file is empty or not formatted correctly.")
             return None
+
+        # Remove unnamed columns
+        df = df.loc[:, ~df.columns.str.contains('^Unnamed')]
 
         return df
         
@@ -701,44 +701,44 @@ def create_thrust_force_plots(df, advance_rate_col):
                                          "Thrust Force vs Advance Rate"),
                            vertical_spacing=0.1)
 
-        # Plot 1: Thrust Force vs Penetration Rate
         if 'Penetration Rate [mm/rev]' in df.columns:
-            mask = df['Penetration Rate [mm/rev]'].notna()
-            fig.add_trace(go.Scatter(
-                x=df.loc[mask, 'Penetration Rate [mm/rev]'], 
-                y=df.loc[mask, thrust_force_col], 
-                mode='markers', 
-                name='vs Penetration Rate', 
-                marker=dict(color='blue', size=5)
-            ), row=1, col=1)
-        else:
-            st.warning("Penetration Rate [mm/rev] column not found in the dataset.")
+            mask = df['Penetration Rate [mm/rev]'].notna() & df[thrust_force_col].notna()
+            if mask.any():
+                fig.add_trace(go.Scatter(
+                    x=df.loc[mask, 'Penetration Rate [mm/rev]'], 
+                    y=df.loc[mask, thrust_force_col], 
+                    mode='markers', 
+                    name='vs Penetration Rate', 
+                    marker=dict(color='blue', size=5)
+                ), row=1, col=1)
+            else:
+                st.warning("No valid data for Thrust Force vs Penetration Rate plot.")
 
-        # Plot 2: Thrust Force vs Average Speed
         if 'Average Speed (mm/min)' in df.columns:
-            mask = df['Average Speed (mm/min)'].notna()
-            fig.add_trace(go.Scatter(
-                x=df.loc[mask, 'Average Speed (mm/min)'], 
-                y=df.loc[mask, thrust_force_col], 
-                mode='markers', 
-                name='vs Average Speed',
-                marker=dict(color='green', size=5)
-            ), row=2, col=1)
-        else:
-            st.warning("Average Speed (mm/min) column not found in the dataset.")
+            mask = df['Average Speed (mm/min)'].notna() & df[thrust_force_col].notna()
+            if mask.any():
+                fig.add_trace(go.Scatter(
+                    x=df.loc[mask, 'Average Speed (mm/min)'], 
+                    y=df.loc[mask, thrust_force_col], 
+                    mode='markers', 
+                    name='vs Average Speed',
+                    marker=dict(color='green', size=5)
+                ), row=2, col=1)
+            else:
+                st.warning("No valid data for Thrust Force vs Average Speed plot.")
 
-        # Plot 3: Thrust Force vs Selected Advance Rate
         if advance_rate_col and advance_rate_col in df.columns:
-            mask = df[advance_rate_col].notna()
-            fig.add_trace(go.Scatter(
-                x=df.loc[mask, advance_rate_col], 
-                y=df.loc[mask, thrust_force_col], 
-                mode='markers', 
-                name='vs Advance Rate',
-                marker=dict(color='red', size=5)
-            ), row=3, col=1)
-        else:
-            st.warning("Selected advance rate column not available for plotting.")
+            mask = df[advance_rate_col].notna() & df[thrust_force_col].notna()
+            if mask.any():
+                fig.add_trace(go.Scatter(
+                    x=df.loc[mask, advance_rate_col], 
+                    y=df.loc[mask, thrust_force_col], 
+                    mode='markers', 
+                    name='vs Advance Rate',
+                    marker=dict(color='red', size=5)
+                ), row=3, col=1)
+            else:
+                st.warning("No valid data for Thrust Force vs Advance Rate plot.")
 
         fig.update_layout(
             height=1200, 
