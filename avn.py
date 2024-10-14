@@ -1,4 +1,3 @@
-
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -808,9 +807,9 @@ def calculate_advance_rate_and_stats(df, distance_column, time_column):
         return None, 0
 
 
-def calculate_penetration_rate(row, revolution_col):
+def calculate_penetration_rate(row, revolution_col, advance_rate_col):
     try:
-        speed = row['Average Speed (mm/min)']
+        speed = row[advance_rate_col]
         revolution = row[revolution_col]
 
         if pd.isna(speed) or pd.isna(revolution):
