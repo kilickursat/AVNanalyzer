@@ -54,7 +54,6 @@ def calculate_advance_rate_and_stats(df, distance_column, time_column):
         return None, 0
 
 def calculate_penetration_rate(row, speed_col, revolution_col):
-    try:
         speed = row[speed_col]
         revolution = row[revolution_col]
 
