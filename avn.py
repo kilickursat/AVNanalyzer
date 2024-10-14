@@ -701,6 +701,7 @@ def create_thrust_force_plots(df, advance_rate_col):
                                          "Thrust Force vs Advance Rate"),
                            vertical_spacing=0.1)
 
+        # Plot 1: Thrust Force vs Penetration Rate
         if 'Penetration Rate [mm/rev]' in df.columns:
             mask = df['Penetration Rate [mm/rev]'].notna()
             fig.add_trace(go.Scatter(
@@ -713,6 +714,7 @@ def create_thrust_force_plots(df, advance_rate_col):
         else:
             st.warning("Penetration Rate [mm/rev] column not found in the dataset.")
 
+        # Plot 2: Thrust Force vs Average Speed
         if 'Average Speed (mm/min)' in df.columns:
             mask = df['Average Speed (mm/min)'].notna()
             fig.add_trace(go.Scatter(
@@ -725,6 +727,7 @@ def create_thrust_force_plots(df, advance_rate_col):
         else:
             st.warning("Average Speed (mm/min) column not found in the dataset.")
 
+        # Plot 3: Thrust Force vs Selected Advance Rate
         if advance_rate_col and advance_rate_col in df.columns:
             mask = df[advance_rate_col].notna()
             fig.add_trace(go.Scatter(
