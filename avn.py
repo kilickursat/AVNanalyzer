@@ -140,7 +140,7 @@ def get_distance_columns(df):
     return [col for col in df.columns if any(keyword in col.lower() for keyword in distance_keywords)]
 
 def get_time_column(df):
-    time_keywords = ['relativzeit', 'relative time', 'time', 'datum', 'date', 'zeit', 'timestamp', 'Relative Time', 'Relativzeit']
+    time_keywords = ['relativzeit', 'relative time', 'time', 'datum', 'date', 'zeit', 'timestamp', 'Relative Time', 'Relativzeit', 'ts(utc)']
     for col in df.columns:
         if any(keyword in col.lower() for keyword in time_keywords):
             return col
