@@ -686,7 +686,7 @@ def get_time_column(df):
 
 def create_thrust_force_plots(df, advance_rate_col):
     try:
-        # Updated column identification with more comprehensive keywords
+        # More flexible column identification
         thrust_force_col = next((col for col in df.columns 
                                if any(kw in col.lower() for kw in [
                                    'thrust force', 'vorschubkraft', 'kraft', 'kraft_max', 
@@ -744,7 +744,7 @@ def create_thrust_force_plots(df, advance_rate_col):
         else:
             st.warning("Selected advance rate column not available for plotting.")
 
-        # Update layout with improved styling
+        # Update layout
         fig.update_layout(
             height=1200, 
             width=800, 
@@ -753,7 +753,7 @@ def create_thrust_force_plots(df, advance_rate_col):
             template='plotly_white'
         )
         
-        # Update axes labels with proper units
+        # Update axes labels
         fig.update_xaxes(title_text="Penetration Rate [mm/rev]", row=1, col=1)
         fig.update_xaxes(title_text="Average Speed [mm/min]", row=2, col=1)
         fig.update_xaxes(title_text=advance_rate_col if advance_rate_col else "Advance Rate [mm/min]", row=3, col=1)
@@ -838,7 +838,7 @@ def main():
         if uploaded_file is not None:
             df = load_data(uploaded_file)
 
-            if df is not None:
+            if df is not None and validate_data(df):
                 working_pressure_cols, revolution_cols, advance_rate_cols = identify_special_columns(df)
 
                 suggested_working_pressure = suggest_column(df, ['working pressure', 'arbeitsdruck', 'pressure', 'druck', 'arbdr', 'sr_arbdr','SR_Arbdr'])
@@ -871,11 +871,6 @@ def main():
 
                 if working_pressure_col != 'None' and revolution_col != 'None':
                     df = calculate_derived_features(df, working_pressure_col, revolution_col, n1, torque_constant, selected_distance)
-                    
-                    if 'Average Speed (mm/min)' in df.columns:
-                        df['Penetration Rate [mm/rev]'] = df.apply(
-                            lambda row: calculate_penetration_rate(row, revolution_col), axis=1
-                        )
 
                 df_viz = rename_columns(df.copy(), working_pressure_col, revolution_col, selected_distance, advance_rate_col)
 
@@ -892,13 +887,7 @@ def main():
                 selected_option = st.sidebar.radio("Choose visualization", options)
 
                 if selected_option not in ['Pressure Distribution', 'Thrust Force Plots']:
-                    default_features = []
-                    if 'Calculated torque [kNm]' in all_features:
-                        default_features.append('Calculated torque [kNm]')
-                    if 'Average Speed (mm/min)' in all_features:
-                        default_features.append('Average Speed (mm/min)')
-                    if 'Penetration Rate [mm/rev]' in all_features:
-                        default_features.append('Penetration Rate [mm/rev]')
+                    default_features = [col for col in ['Calculated torque [kNm]', 'Average Speed (mm/min)', 'Penetration Rate [mm/rev]'] if col in all_features]
                     
                     selected_features = st.sidebar.multiselect(
                         "Select features for analysis",
@@ -909,21 +898,22 @@ def main():
                 st.subheader(f"Visualization: {selected_option}")
 
                 if selected_option == 'Rock Strength Comparison':
-                    rock_df = None
                     if rock_strength_file:
                         rock_strength_data = read_rock_strength_data(rock_strength_file)
                         if rock_strength_data is not None:
                             rock_df = preprocess_rock_strength_data(rock_strength_data)
-                            rock_type = st.sidebar.selectbox("Select Rock Type", rock_df.index)
-
-                            if rock_df is not None and rock_type and selected_features:
-                                fig = create_rock_strength_comparison_chart(df_viz, rock_df, rock_type, selected_features)
-                                if fig is not None:
-                                    st.plotly_chart(fig)
+                            if rock_df is not None:
+                                rock_type = st.sidebar.selectbox("Select Rock Type", rock_df.index)
+                                if rock_type and selected_features:
+                                    fig = create_rock_strength_comparison_chart(df_viz, rock_df, rock_type, selected_features)
+                                    if fig is not None:
+                                        st.plotly_chart(fig)
+                                else:
+                                    st.warning("Please select a rock type and at least one machine parameter for comparison.")
                             else:
-                                st.warning("Please ensure you've selected a rock type and at least one machine parameter for comparison.")
+                                st.warning("Error processing rock strength data. Please check your file.")
                         else:
-                            st.warning("Error processing rock strength data. Please check your file.")
+                            st.warning("Error reading rock strength data. Please check your file.")
                     else:
                         st.warning("Please upload rock strength data to use this visualization.")
                 
@@ -977,7 +967,7 @@ def main():
                     st.sidebar.markdown(href, unsafe_allow_html=True)
 
             else:
-                st.error("Error loading the data. Please check your file format.")
+                st.error("Error loading the data or the data doesn't meet the required format. Please check your file.")
     except Exception as e:
         st.error(f"An unexpected error occurred in the main function: {str(e)}")
 
