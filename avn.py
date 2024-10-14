@@ -22,22 +22,51 @@ def clean_numeric_column(df, column_name):
     return df
 
 # Advanced rate calculation function
-import pandas as pd
-from datetime import datetime
-
 def calculate_advance_rate_and_stats(df, distance_column, time_column):
     try:
+        # Convert distance column to numeric
         df[distance_column] = pd.to_numeric(df[distance_column], errors='coerce')
-        df[time_column] = pd.to_numeric(df[time_column], errors='coerce')
 
-        if len(df) > 1:
-            weg = round(df[distance_column].max() - df[distance_column].min(), 2)
-            zeit = round(df[time_column].max() - df[time_column].min(), 2)
+        # Check if the time column is already in datetime format
+        if not pd.api.types.is_datetime64_any_dtype(df[time_column]):
+            # Attempt to parse datetime without 'infer_datetime_format'
+            df[time_column] = pd.to_datetime(df[time_column], errors='coerce')
+
+        # Drop rows where distance or time is NaN after conversion
+        df_clean = df.dropna(subset=[distance_column, time_column])
+
+        if len(df_clean) > 1:
+            max_distance = df_clean[distance_column].max()
+            min_distance = df_clean[distance_column].min()
+            distance_diff = max_distance - min_distance
+
+            # Validate distance difference
+            if distance_diff > 1e7:  # Example threshold (adjust as needed)
+                st.error("Distance values are too large. Please verify your data.")
+                return None, 0
+            else:
+                weg = round(distance_diff, 2)
+            
+            if pd.api.types.is_datetime64_any_dtype(df_clean[time_column]):
+                zeit = (df_clean[time_column].max() - df_clean[time_column].min()).total_seconds() / 60  # Convert to minutes
+            else:
+                zeit = round(df_clean[time_column].max() - df_clean[time_column].min(), 2)
+                
+                # Check if zeit is in seconds or microseconds and convert to minutes
+                if zeit > 1000:  # Assuming it's in microseconds if it's a large number
+                    zeit = zeit * (0.000001 / 60)
+                elif zeit > 100:  # Assuming it's in seconds if it's between 100 and 1000
+                    zeit = zeit / 60
+        elif len(df_clean) == 1:
+            weg = round(df_clean[distance_column].iloc[0], 2)
+            zeit = 0  # No time difference with a single data point
         else:
-            weg = df[distance_column].iloc[0]
-            zeit = df[time_column].iloc[0]
+            st.error("No valid data available after cleaning distance and time columns.")
+            return None, 0
 
-        zeit = zeit * (0.000001 / 60)
+        if weg < 0 or zeit < 0:
+            st.error("Invalid calculations: Negative values encountered for distance or time.")
+            return None, 0
 
         average_speed = round(weg / zeit, 2) if zeit != 0 else 0
 
@@ -51,7 +80,6 @@ def calculate_advance_rate_and_stats(df, distance_column, time_column):
     except Exception as e:
         st.error(f"Error calculating advance rate stats: {str(e)}")
         return None, 0
-
 
 def calculate_penetration_rate(row, revolution_col):
     try:
@@ -67,7 +95,6 @@ def calculate_penetration_rate(row, revolution_col):
     except Exception as e:
         st.error(f"Error calculating penetration rate: {str(e)}")
         return np.nan
-
 
 # Function to calculate torque
 def calculate_torque(working_pressure, torque_constant, current_speed=None, n1=None):
@@ -109,17 +136,16 @@ def calculate_derived_features(df, working_pressure_col, revolution_col, n1, tor
         
         if distance_column in df.columns and time_column:
             result, average_speed = calculate_advance_rate_and_stats(df, distance_column, time_column)
-            df['Average Speed (mm/min)'] = average_speed
-            
-            if revolution_col is not None:
-                df['Penetration Rate [mm/rev]'] = df.apply(lambda row: calculate_penetration_rate(row, revolution_col), axis=1)
+            if result:
+                df['Average Speed (mm/min)'] = result["Average Speed (mm/min)"]
+            else:
+                st.warning("Average Speed could not be calculated due to data issues.")
         
         return df
         
     except Exception as e:
         st.error(f"Error calculating derived features: {str(e)}")
         return df
-
 
 # Helper functions for column identification
 def identify_special_columns(df):
@@ -138,9 +164,16 @@ def get_distance_columns(df):
     return [col for col in df.columns if any(keyword in col.lower() for keyword in distance_keywords)]
 
 def get_time_column(df):
-    time_keywords = ['relativzeit', 'relative time', 'time', 'datum', 'date', 'zeit', 'timestamp', 'Relative Time', 'Relativzeit', 'ts(utc)']
+    time_keywords = ['relativzeit', 'relative time', 'time', 'datum', 'date', 'zeit', 'timestamp', 'ts(utc)']
     for col in df.columns:
         if any(keyword in col.lower() for keyword in time_keywords):
+            return col
+    return None
+
+# Helper function to suggest column based on keywords
+def suggest_column(df, keywords):
+    for col in df.columns:
+        if any(kw in col.lower() for kw in keywords):
             return col
     return None
 
@@ -180,6 +213,9 @@ def read_rock_strength_data(file):
 # Function to preprocess the rock strength data
 def preprocess_rock_strength_data(df):
     try:
+        if 'Probenbezeichnung' not in df.columns or 'Value' not in df.columns or 'Test' not in df.columns:
+            st.error("Rock strength data must contain 'Probenbezeichnung', 'Value', and 'Test' columns.")
+            return None
         df['Rock Type'] = df['Probenbezeichnung'].str.split().str[0]
         pivoted = df.pivot_table(values='Value', index='Rock Type', columns='Test', aggfunc='mean')
         pivoted.rename(columns={'UCS': 'UCS (MPa)', 'BTS': 'BTS (MPa)', 'PLT': 'PLT (MPa)'}, inplace=True)
@@ -187,7 +223,6 @@ def preprocess_rock_strength_data(df):
     except Exception as e:
         st.error(f"Error preprocessing rock strength data: {e}")
         return None
-
 
 # Updated function to create comparison chart for machine parameters vs rock strength
 def create_rock_strength_comparison_chart(df, rock_df, rock_type, selected_features):
@@ -251,16 +286,17 @@ def create_rock_strength_comparison_chart(df, rock_df, rock_type, selected_featu
         st.error(f"Error creating rock strength comparison chart: {e}")
         return None
 
-
 def rename_columns(df, working_pressure_col, revolution_col, distance_col, advance_rate_col):
-    column_mapping = {
-        working_pressure_col: 'Working pressure [bar]',
-        revolution_col: 'Revolution [rpm]',
-        distance_col: 'Chainage [mm]',
-        advance_rate_col: 'Advance rate [mm/min]'
-    }
+    column_mapping = {}
+    if working_pressure_col != 'None':
+        column_mapping[working_pressure_col] = 'Working pressure [bar]'
+    if revolution_col != 'None':
+        column_mapping[revolution_col] = 'Revolution [rpm]'
+    if distance_col != 'None':
+        column_mapping[distance_col] = 'Chainage [mm]'
+    if advance_rate_col != 'None':
+        column_mapping[advance_rate_col] = 'Advance rate [mm/min]'
     return df.rename(columns=column_mapping)
-
 
 # Updated function to visualize correlation heatmap with dynamic input
 def create_correlation_heatmap(df, selected_features):
@@ -284,7 +320,6 @@ def create_correlation_heatmap(df, selected_features):
     except Exception as e:
         st.error(f"Error creating correlation heatmap: {str(e)}")
 
-
 # Updated function to create statistical summary
 def create_statistical_summary(df, selected_features, round_to=2):
     if not selected_features:
@@ -293,6 +328,9 @@ def create_statistical_summary(df, selected_features, round_to=2):
 
     summary_dict = {}
     for feature in selected_features:
+        if feature not in df.columns:
+            st.warning(f"Feature '{feature}' not found in the dataset.")
+            continue
         summary_dict[feature] = {
             'count': int(df[feature].count()),
             'mean': round(df[feature].mean(), round_to),
@@ -402,7 +440,6 @@ def create_features_vs_time(df, selected_features, time_column):
 
     st.plotly_chart(fig, use_container_width=True)
 
-
 # Updated function to create Pressure Distribution Over Time Polar Plot with Plotly
 def create_pressure_distribution_polar_plot(df, pressure_column, time_column):
     try:
@@ -419,7 +456,16 @@ def create_pressure_distribution_polar_plot(df, pressure_column, time_column):
         df[pressure_column] = pd.to_numeric(df[pressure_column], errors='coerce')
 
         # Normalize time to 360 degrees
-        df['normalized_time'] = (df[time_column] - df[time_column].min()) / (df[time_column].max() - df[time_column].min()) * 360
+        if pd.api.types.is_datetime64_any_dtype(df[time_column]):
+            normalized_time = (df[time_column] - df[time_column].min()).dt.total_seconds()
+        else:
+            normalized_time = df[time_column]
+
+        if normalized_time.max() - normalized_time.min() == 0:
+            st.warning("Time data has zero variance. Cannot create a meaningful polar plot.")
+            return
+
+        df['normalized_time'] = (normalized_time - normalized_time.min()) / (normalized_time.max() - normalized_time.min()) * 360
 
         fig = go.Figure()
         fig.add_trace(go.Scatterpolar(
@@ -431,7 +477,7 @@ def create_pressure_distribution_polar_plot(df, pressure_column, time_column):
         ))
 
         max_pressure = df[pressure_column].max()
-        if pd.isna(max_pressure):
+        if pd.isna(max_pressure) or max_pressure == 0:
             max_pressure = 1
 
         fig.update_layout(
@@ -461,9 +507,6 @@ def create_pressure_distribution_polar_plot(df, pressure_column, time_column):
         st.plotly_chart(fig)
     except Exception as e:
         st.error(f"Error creating pressure distribution polar plot: {e}")
-
-
-
 
 def create_parameters_vs_chainage(df, selected_features, chainage_column):
     if not selected_features:
@@ -539,8 +582,6 @@ def create_parameters_vs_chainage(df, selected_features, chainage_column):
     fig.update_xaxes(title_text='Chainage [mm]', row=len(available_features), col=1)
 
     st.plotly_chart(fig, use_container_width=True)
-
-
 
 # Updated function to create multi-axis box plots with additional features
 def create_multi_axis_box_plots(df, selected_features):
@@ -663,186 +704,6 @@ def add_logo():
     except Exception as e:
         st.error(f"Failed to add logo: {e}")
 
-def identify_special_columns(df):
-    working_pressure_keywords = ['working pressure', 'arbeitsdruck', 'pressure', 'druck', 'arbdr', 'sr_arbdr', 'SR_Arbdr']
-    revolution_keywords = ['revolution', 'drehzahl', 'rpm', 'drehz', 'sr_drehz', 'SR_Drehz']
-    advance_rate_keywords = ['advance rate', 'vortrieb', 'vorschub', 'penetration rate', 'VTgeschw_Z','geschw','geschw_Z']
-
-    working_pressure_cols = [col for col in df.columns if any(kw in col.lower() for kw in working_pressure_keywords)]
-    revolution_cols = [col for col in df.columns if any(kw in col.lower() for kw in revolution_keywords)]
-    advance_rate_cols = [col for col in df.columns if any(kw in col.lower() for kw in advance_rate_keywords)]
-
-    return working_pressure_cols, revolution_cols, advance_rate_cols
-
-# Helper function to suggest column based on keywords
-def suggest_column(df, keywords):
-    for col in df.columns:
-        if any(kw in col.lower() for kw in keywords):
-            return col
-    return None
-
-def get_time_column(df):
-    time_keywords = ['relativzeit', 'relative time', 'time', 'datum', 'date', 'zeit', 'timestamp', 'Relative Time', 'Relativzeit']
-    for col in df.columns:
-        if any(keyword in col.lower() for keyword in time_keywords):
-            return col
-    return None
-
-
-def create_thrust_force_plots(df, advance_rate_col):
-    try:
-        thrust_force_col = next((col for col in df.columns 
-                               if any(kw in col.lower() for kw in [
-                                   'thrust force', 'vorschubkraft', 'kraft', 'kraft_max', 
-                                   'gesamtkraft', 'gesamtkraft_stz', 'gesamtkraft_vtp', 
-                                   'force'])), 
-                              None)
-        
-        if thrust_force_col is None:
-            st.warning("Thrust force column not found in the dataset.")
-            return
-
-        fig = make_subplots(rows=3, cols=1, 
-                           subplot_titles=("Thrust Force vs Penetration Rate", 
-                                         "Thrust Force vs Average Speed", 
-                                         "Thrust Force vs Advance Rate"),
-                           vertical_spacing=0.1)
-
-        if 'Penetration Rate [mm/rev]' in df.columns:
-            mask = df['Penetration Rate [mm/rev]'].notna() & df[thrust_force_col].notna()
-            if mask.any():
-                fig.add_trace(go.Scatter(
-                    x=df.loc[mask, 'Penetration Rate [mm/rev]'], 
-                    y=df.loc[mask, thrust_force_col], 
-                    mode='markers', 
-                    name='vs Penetration Rate', 
-                    marker=dict(color='blue', size=5)
-                ), row=1, col=1)
-            else:
-                st.warning("No valid data for Thrust Force vs Penetration Rate plot.")
-
-        if 'Average Speed (mm/min)' in df.columns:
-            mask = df['Average Speed (mm/min)'].notna() & df[thrust_force_col].notna()
-            if mask.any():
-                fig.add_trace(go.Scatter(
-                    x=df.loc[mask, 'Average Speed (mm/min)'], 
-                    y=df.loc[mask, thrust_force_col], 
-                    mode='markers', 
-                    name='vs Average Speed',
-                    marker=dict(color='green', size=5)
-                ), row=2, col=1)
-            else:
-                st.warning("No valid data for Thrust Force vs Average Speed plot.")
-
-        if advance_rate_col and advance_rate_col in df.columns:
-            mask = df[advance_rate_col].notna() & df[thrust_force_col].notna()
-            if mask.any():
-                fig.add_trace(go.Scatter(
-                    x=df.loc[mask, advance_rate_col], 
-                    y=df.loc[mask, thrust_force_col], 
-                    mode='markers', 
-                    name='vs Advance Rate',
-                    marker=dict(color='red', size=5)
-                ), row=3, col=1)
-            else:
-                st.warning("No valid data for Thrust Force vs Advance Rate plot.")
-
-        fig.update_layout(
-            height=1200, 
-            width=800, 
-            title_text="Thrust Force Relationships",
-            showlegend=True,
-            template='plotly_white'
-        )
-        
-        fig.update_xaxes(title_text="Penetration Rate [mm/rev]", row=1, col=1)
-        fig.update_xaxes(title_text="Average Speed [mm/min]", row=2, col=1)
-        fig.update_xaxes(title_text=advance_rate_col if advance_rate_col else "Advance Rate [mm/min]", row=3, col=1)
-        
-        for i in range(1, 4):
-            fig.update_yaxes(title_text="Thrust Force [kN]", row=i, col=1)
-
-        st.plotly_chart(fig)
-    except Exception as e:
-        st.error(f"Error creating thrust force plots: {e}")
-
-
-def safe_selectbox(label, options, suggested_option):
-    try:
-        if suggested_option and suggested_option in options:
-            index = options.index(suggested_option)
-        else:
-            index = 0  # Default to 'None'
-    except ValueError:
-        index = 0  # Default to 'None' if suggested_option is not in options
-    return st.sidebar.selectbox(label, options, index=index)
-
-# Add these functions after the existing helper functions and before the visualization functions
-
-def calculate_advance_rate_and_stats(df, distance_column, time_column):
-    try:
-        df[distance_column] = pd.to_numeric(df[distance_column], errors='coerce')
-        
-        # Check if the time column is already in datetime format
-        if not pd.api.types.is_datetime64_any_dtype(df[time_column]):
-            # Attempt to parse datetime with multiple possible formats
-            df[time_column] = pd.to_datetime(df[time_column], errors='coerce', infer_datetime_format=True)
-
-        if len(df) > 1:
-            weg = round(df[distance_column].max() - df[distance_column].min(), 2)
-            
-            if pd.api.types.is_datetime64_any_dtype(df[time_column]):
-                zeit = (df[time_column].max() - df[time_column].min()).total_seconds() / 60  # Convert to minutes
-            else:
-                zeit = round(df[time_column].max() - df[time_column].min(), 2)
-
-                # Check if zeit is in seconds or microseconds and convert to minutes
-                if zeit > 1000:  # Assuming it's in microseconds if it's a large number
-                    zeit = zeit * (0.000001 / 60)
-                elif zeit > 100:  # Assuming it's in seconds if it's between 100 and 1000
-                    zeit = zeit / 60
-        else:
-            weg = df[distance_column].iloc[0]
-            if pd.api.types.is_datetime64_any_dtype(df[time_column]):
-                zeit = 0  # Only one data point, time difference is zero
-            else:
-                zeit = df[time_column].iloc[0]
-
-                # Check and convert if necessary
-                if zeit > 1000:
-                    zeit = zeit * (0.000001 / 60)
-                elif zeit > 100:
-                    zeit = zeit / 60
-
-        average_speed = round(weg / zeit, 2) if zeit != 0 else 0
-
-        result = {
-            "Total Distance (mm)": weg,
-            "Total Time (min)": zeit,
-            "Average Speed (mm/min)": average_speed
-        }
-
-        return result, average_speed
-    except Exception as e:
-        st.error(f"Error calculating advance rate stats: {str(e)}")
-        return None, 0
-
-
-def calculate_penetration_rate(row, revolution_col):
-    try:
-        speed = row['Average Speed (mm/min)']
-        revolution = row[revolution_col]
-
-        if pd.isna(speed) or pd.isna(revolution):
-            return np.nan
-        elif revolution == 0:
-            return np.inf if speed != 0 else 0
-        else:
-            return round(speed / revolution, 4)
-    except Exception as e:
-        st.error(f"Error calculating penetration rate: {str(e)}")
-        return np.nan
-
 # Main function
 def main():
     try:
@@ -896,9 +757,12 @@ def main():
                     time_column = get_time_column(df)
                     if time_column:
                         result, average_speed = calculate_advance_rate_and_stats(df, selected_distance, time_column)
-                        df['Average Speed (mm/min)'] = average_speed
-                        
-                    if 'Average Speed (mm/min)' in df.columns:
+                        if result:
+                            df['Average Speed (mm/min)'] = result["Average Speed (mm/min)"]
+                        else:
+                            st.warning("Average Speed could not be calculated due to data issues.")
+                    
+                    if 'Average Speed (mm/min)' in df.columns and revolution_col != 'None':
                         df['Penetration Rate [mm/rev]'] = df.apply(
                             lambda row: calculate_penetration_rate(row, revolution_col), axis=1
                         )
@@ -1010,8 +874,6 @@ def main():
     st.markdown("---")
     st.markdown("© 2024 Herrenknecht AG. All rights reserved.")
     st.markdown("Created by Kursat Kilic - Geotechnical Digitalization")
-    
 
-    
 if __name__ == "__main__":
     main()
