@@ -871,14 +871,22 @@ def main():
                     if time_column and selected_distance:
                         result, average_speed = calculate_advance_rate_and_stats(df, selected_distance, time_column)
                         df['Average Speed (mm/min)'] = average_speed
+                        st.success(f"Average Speed calculated: {average_speed:.2f} mm/min")
 
                     # Calculate penetration rate
                     if 'Average Speed (mm/min)' in df.columns and revolution_col != 'None':
                         df['Penetration Rate [mm/rev]'] = df.apply(
                             lambda row: calculate_penetration_rate(row, revolution_col), axis=1
                         )
+                        st.success("Penetration Rate calculated successfully")
+
+                    # Log the columns after calculations
+                    st.write("Columns after calculations:", df.columns.tolist())
 
                 df_viz = rename_columns(df.copy(), working_pressure_col, revolution_col, selected_distance, advance_rate_col)
+
+                # Log the columns after renaming
+                st.write("Columns after renaming:", df_viz.columns.tolist())
 
                 all_features = df_viz.columns.tolist()
                 
