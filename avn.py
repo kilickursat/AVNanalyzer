@@ -130,26 +130,38 @@ def calculate_derived_features(df, working_pressure_col, revolution_col, n1, tor
 
 # Helper functions for column identification
 def identify_special_columns(df):
-    working_pressure_keywords = ['working pressure', 'arbeitsdruck', 'sr_arbdr', 'SR_Arbdr','pressure', 'druck', 'arbdr']
-    revolution_keywords = ['revolution', 'revolution (rpm)','drehzahl', 'rpm', 'drehz', 'sr_drehz', 'SR_Drehz','Revolution', 'Revolution [rpm]','Revolution (rpm)']
-    advance_rate_keywords = ['advance rate', 'advance rate [mm/min]', 'Advance rate', 'Advance_rate','Advance Rate','vortrieb', 'vorschub', 'VTgeschw_Z', 'geschw', 'geschw_Z']
+    try:
+        working_pressure_keywords = ['working pressure', 'arbeitsdruck', 'sr_arbdr', 'SR_Arbdr','pressure', 'druck', 'arbdr']
+        revolution_keywords = ['revolution', 'revolution (rpm)','drehzahl', 'rpm', 'drehz', 'sr_drehz', 'SR_Drehz','Revolution', 'Revolution [rpm]','Revolution (rpm)']
+        advance_rate_keywords = ['advance rate', 'advance rate [mm/min]', 'Advance rate', 'Advance_rate','Advance Rate','vortrieb', 'vorschub', 'VTgeschw_Z', 'geschw', 'geschw_Z']
 
-    working_pressure_cols = [col for col in df.columns if any(kw in col.lower() for kw in working_pressure_keywords)]
-    revolution_cols = [col for col in df.columns if any(kw in col.lower() for kw in revolution_keywords)]
-    advance_rate_cols = [col for col in df.columns if any(kw in col.lower() for kw in advance_rate_keywords)]
+        working_pressure_cols = [col for col in df.columns if any(kw in str(col).lower() for kw in working_pressure_keywords)]
+        revolution_cols = [col for col in df.columns if any(kw in str(col).lower() for kw in revolution_keywords)]
+        advance_rate_cols = [col for col in df.columns if any(kw in str(col).lower() for kw in advance_rate_keywords)]
 
-    return working_pressure_cols, revolution_cols, advance_rate_cols
+        return working_pressure_cols, revolution_cols, advance_rate_cols
+    except Exception as e:
+        st.error(f"Error in identify_special_columns: {e}")
+        return [], [], []
 
 def get_distance_columns(df):
-    distance_keywords = ['distance', 'length', 'travel', 'chainage', 'Tunnellänge Neu', 'Tunnellänge', 'Weg_mm_Z', 'VTP_Weg']
-    return [col for col in df.columns if any(keyword in col.lower() for keyword in distance_keywords)]
+    try:
+        distance_keywords = ['distance', 'length', 'travel', 'chainage', 'Tunnellänge Neu', 'Tunnellänge', 'Weg_mm_Z', 'VTP_Weg']
+        return [col for col in df.columns if any(keyword in str(col).lower() for keyword in distance_keywords)]
+    except Exception as e:
+        st.error(f"Error in get_distance_columns: {e}")
+        return []
 
 def get_time_column(df):
-    time_keywords = ['relativzeit', 'relative time', 'time', 'datum', 'date', 'zeit', 'timestamp', 'Relative Time', 'Relativzeit']
-    for col in df.columns:
-        if any(keyword in col.lower() for keyword in time_keywords):
-            return col
-    return None
+    try:
+        time_keywords = ['relativzeit', 'relative time', 'time', 'datum', 'date', 'zeit', 'timestamp', 'Relative Time', 'Relativzeit']
+        for col in df.columns:
+            if any(keyword in str(col).lower() for keyword in time_keywords):
+                return col
+        return None
+    except Exception as e:
+        st.error(f"Error in get_time_column: {e}")
+        return None
 
 # Enhanced Function to read CSV or Excel file with validation
 @st.cache_data
@@ -173,12 +185,17 @@ def load_data(file):
         # Remove columns that contain only NaN values
         df = df.dropna(axis=1, how='all')
 
+        # Print information about the loaded data
+        st.write("Data shape:", df.shape)
+        st.write("Column names:", df.columns.tolist())
+        st.write("Data types:", df.dtypes)
+        st.write("First few rows:", df.head())
+
         return df
         
     except Exception as e:
         st.error(f"Error loading data: {e}")
         return None
-
 def read_rock_strength_data(file):
     try:
         df = pd.read_excel(file)
@@ -909,6 +926,10 @@ def main():
                     st.success("Data validation passed. Proceeding with analysis.")
                     
                 working_pressure_cols, revolution_cols, advance_rate_cols = identify_special_columns(df)
+                
+                st.write("Identified working pressure columns:", working_pressure_cols)
+                st.write("Identified revolution columns:", revolution_cols)
+                st.write("Identified advance rate columns:", advance_rate_cols)
 
                 suggested_working_pressure = suggest_column(df, ['working pressure', 'arbeitsdruck', 'pressure', 'druck', 'arbdr', 'sr_arbdr','SR_Arbdr'])
                 suggested_revolution = suggest_column(df, ['revolution', 'drehzahl', 'rpm', 'drehz', 'sr_drehz', 'SR_Drehz'])
