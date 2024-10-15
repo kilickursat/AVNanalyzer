@@ -81,7 +81,7 @@ def calculate_torque(working_pressure, torque_constant, current_speed=None, n1=N
     return torque
 
 # Function to calculate derived features
-def calculate_derived_features(df, working_pressure_col, revolution_col, n1, torque_constant, selected_distance):
+def calculate_derived_features(df, working_pressure_col, revolution_col, n1, torque_constant, selected_distance, time_column):
     try:
         if working_pressure_col is not None and revolution_col is not None:
             df[working_pressure_col] = pd.to_numeric(df[working_pressure_col], errors='coerce')
@@ -105,7 +105,6 @@ def calculate_derived_features(df, working_pressure_col, revolution_col, n1, tor
         
         # Calculate advance rate and average speed
         distance_column = selected_distance
-        time_column = get_time_column(df)
         
         if distance_column in df.columns and time_column:
             result, average_speed = calculate_advance_rate_and_stats(df, distance_column, time_column)
@@ -706,7 +705,7 @@ def create_thrust_force_plots(df, advance_rate_col):
                 marker=dict(color='blue', size=5)
             ), row=1, col=1)
         else:
-            st.warning("Penetration Rate [mm/rev] column not found in the dataset.")
+            st.info("Penetration Rate [mm/rev] column not available for plotting.")
 
         # Plot 2: Thrust Force vs Average Speed
         if 'Average Speed (mm/min)' in df.columns:
@@ -719,7 +718,7 @@ def create_thrust_force_plots(df, advance_rate_col):
                 marker=dict(color='green', size=5)
             ), row=2, col=1)
         else:
-            st.warning("Average Speed (mm/min) column not found in the dataset.")
+            st.info("Average Speed (mm/min) column not available for plotting.")
 
         # Plot 3: Thrust Force vs Selected Advance Rate
         if advance_rate_col and advance_rate_col in df.columns:
@@ -732,7 +731,7 @@ def create_thrust_force_plots(df, advance_rate_col):
                 marker=dict(color='red', size=5)
             ), row=3, col=1)
         else:
-            st.warning("Selected advance rate column not available for plotting.")
+            st.info("Selected advance rate column not available for plotting.")
 
         # Update layout with improved styling
         fig.update_layout(
@@ -754,7 +753,6 @@ def create_thrust_force_plots(df, advance_rate_col):
         st.plotly_chart(fig)
     except Exception as e:
         st.error(f"Error creating thrust force plots: {e}")
-
 def safe_selectbox(label, options, suggested_option):
     try:
         if suggested_option and suggested_option in options:
@@ -853,9 +851,14 @@ def main():
                         "1 minute": 60
                     }[sampling_rate]
                     
-                    df_viz = create_artificial_time_column(df_viz, sampling_rate_seconds)
+                    df = create_artificial_time_column(df, sampling_rate_seconds)
                     time_column = 'Artificial Time [s]'
                     st.success(f"Artificial time column created with sampling rate: {sampling_rate}")
+                
+                # Now calculate derived features
+                df = calculate_derived_features(df, working_pressure_col, revolution_col, n1, torque_constant, selected_distance, time_column)
+                
+                df_viz = rename_columns(df.copy(), working_pressure_col, revolution_col, selected_distance, advance_rate_col)
 
                 options = ['Statistical Summary', 'Parameters vs Chainage', 'Box Plots', 'Violin Plots', 'Thrust Force Plots', 'Correlation Heatmap']
                 if time_column:
