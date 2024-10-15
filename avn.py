@@ -106,14 +106,19 @@ def calculate_derived_features(df, working_pressure_col, revolution_col, n1, tor
         # Calculate advance rate and average speed
         distance_column = selected_distance
         
-        if distance_column in df.columns and time_column and time_column in df.columns:
-            result, average_speed = calculate_advance_rate_and_stats(df, distance_column, time_column)
-            df['Average Speed (mm/min)'] = average_speed
-            
-            if revolution_col is not None:
-                df['Penetration Rate [mm/rev]'] = df.apply(lambda row: calculate_penetration_rate(row, revolution_col), axis=1)
-        else:
-            st.warning("Unable to calculate Average Speed and Penetration Rate. Ensure distance and time columns are available.")
+        if distance_column not in df.columns:
+            st.warning(f"Selected distance column '{distance_column}' not found in the dataset.")
+            return df
+
+        if time_column is None or time_column not in df.columns:
+            st.warning(f"Time column '{time_column}' not found in the dataset. Average Speed and Penetration Rate cannot be calculated.")
+            return df
+
+        result, average_speed = calculate_advance_rate_and_stats(df, distance_column, time_column)
+        df['Average Speed (mm/min)'] = average_speed
+        
+        if revolution_col is not None:
+            df['Penetration Rate [mm/rev]'] = df.apply(lambda row: calculate_penetration_rate(row, revolution_col), axis=1)
         
         return df
         
@@ -825,11 +830,15 @@ def main():
                 n1 = st.sidebar.number_input("Enter n1 value (revolution 1/min)", min_value=0.0, value=1.0, step=0.1)
                 torque_constant = st.sidebar.number_input("Enter torque constant", min_value=0.0, value=1.0, step=0.1)
 
-                if working_pressure_col != 'None' and revolution_col != 'None':
-                    df = calculate_derived_features(df, working_pressure_col, revolution_col, n1, torque_constant, selected_distance)
 
+
+                # In the main function, replace the existing calculate_derived_features calls with:
+                
                 time_column = get_time_column(df)
-
+                
+                if working_pressure_col != 'None' and revolution_col != 'None':
+                    df = calculate_derived_features(df, working_pressure_col, revolution_col, n1, torque_constant, selected_distance, time_column)
+                
                 if time_column is None:
                     st.warning("No time column detected in the dataset.")
                     sampling_rate = st.selectbox(
@@ -847,11 +856,11 @@ def main():
                     df = create_artificial_time_column(df, sampling_rate_seconds)
                     time_column = 'Artificial Time [s]'
                     st.success(f"Artificial time column created with sampling rate: {sampling_rate}")
-
+                
                     # Recalculate derived features with the new time column
                     df = calculate_derived_features(df, working_pressure_col, revolution_col, n1, torque_constant, selected_distance, time_column)
 
-                df_viz = rename_columns(df.copy(), working_pressure_col, revolution_col, selected_distance, advance_rate_col)
+
 
                 all_features = df_viz.columns.tolist()
 
