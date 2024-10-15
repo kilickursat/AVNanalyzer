@@ -21,6 +21,21 @@ def clean_numeric_column(df, column_name):
     df[column_name] = df[column_name].fillna(df[column_name].median())
     return df
 
+
+def create_artificial_time_column(df, sampling_rate):
+    """
+    Create an artificial time column based on the dataset length and sampling rate.
+    
+    :param df: DataFrame
+    :param sampling_rate: Time interval between rows in seconds
+    :return: DataFrame with new time column
+    """
+    num_rows = len(df)
+    time_column = pd.Series(np.arange(0, num_rows * sampling_rate, sampling_rate))
+    df['Artificial Time [s]'] = time_column
+    return df
+
+
 # Advanced rate calculation function
 def calculate_advance_rate_and_stats(df, distance_column, time_column):
     try:
@@ -135,8 +150,9 @@ def get_distance_columns(df):
     distance_keywords = ['distance', 'length', 'travel', 'chainage', 'Tunnellänge Neu', 'Tunnellänge', 'Weg_mm_Z', 'VTP_Weg']
     return [col for col in df.columns if any(keyword in col.lower() for keyword in distance_keywords)]
 
+
 def get_time_column(df):
-    time_keywords = ['relativzeit', 'relative time', 'time', 'datum', 'date', 'zeit', 'timestamp', 'Relative Time', 'Relativzeit']
+    time_keywords = ['relativzeit', 'relative time', 'time', 'datum', 'date', 'zeit', 'timestamp', 'Relative Time', 'Relativzeit', 'Artificial Time [s]']
     for col in df.columns:
         if any(keyword in col.lower() for keyword in time_keywords):
             return col
@@ -676,14 +692,6 @@ def suggest_column(df, keywords):
             return col
     return None
 
-def get_time_column(df):
-    time_keywords = ['relativzeit', 'relative time', 'time', 'datum', 'date', 'zeit', 'timestamp', 'Relative Time', 'Relativzeit']
-    for col in df.columns:
-        if any(keyword in col.lower() for keyword in time_keywords):
-            return col
-    return None
-
-
 def create_thrust_force_plots(df, advance_rate_col):
     try:
         # Updated column identification with more comprehensive keywords
@@ -881,7 +889,26 @@ def main():
 
                 all_features = df_viz.columns.tolist()
                 
-                time_column = get_time_column(df_viz)
+                time_column = get_time_column(df)
+                
+                if time_column is None:
+                    st.warning("No time column detected in the dataset.")
+                    sampling_rate = st.selectbox(
+                        "Select time sampling rate for artificial time column:",
+                        ["1 second", "5 seconds", "10 seconds", "30 seconds", "1 minute"]
+                    )
+                    sampling_rate_seconds = {
+                        "1 second": 1,
+                        "5 seconds": 5,
+                        "10 seconds": 10,
+                        "30 seconds": 30,
+                        "1 minute": 60
+                    }[sampling_rate]
+                    
+                    df = create_artificial_time_column(df, sampling_rate_seconds)
+                    time_column = 'Artificial Time [s]'
+                    st.success(f"Artificial time column created with sampling rate: {sampling_rate}")
+                
 
                 options = ['Statistical Summary', 'Parameters vs Chainage', 'Box Plots', 'Violin Plots', 'Thrust Force Plots', 'Correlation Heatmap']
                 if time_column:
