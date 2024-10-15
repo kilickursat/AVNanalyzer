@@ -21,65 +21,52 @@ def clean_numeric_column(df, column_name):
     df[column_name] = df[column_name].fillna(df[column_name].median())
     return df
 
-
-def create_artificial_time_column(df, sampling_rate):
-    """
-    Create an artificial time column based on the dataset length and sampling rate.
-    
-    :param df: DataFrame
-    :param sampling_rate: Time interval between rows in seconds
-    :return: DataFrame with new time column
-    """
-    num_rows = len(df)
-    time_column = pd.Series(np.arange(0, num_rows * sampling_rate, sampling_rate))
-    df['Artificial Time [s]'] = time_column
-    return df
-
-
 # Advanced rate calculation function
 def calculate_advance_rate_and_stats(df, distance_column, time_column):
     try:
-        if not all(col in df.columns for col in [distance_column, time_column]):
-            raise ValueError(f"Required columns not found in DataFrame")
-            
+        df[distance_column] = pd.to_numeric(df[distance_column], errors='coerce')
+        df[time_column] = pd.to_numeric(df[time_column], errors='coerce')
+
         if len(df) > 1:
             weg = round(df[distance_column].max() - df[distance_column].min(), 2)
             zeit = round(df[time_column].max() - df[time_column].min(), 2)
         else:
-            weg = round(df[distance_column].iloc[0], 2)
-            zeit = round(df[time_column].iloc[0], 2)
-            
-        zeit = zeit * (0.000001 / 60)
-        
+            weg = df[distance_column].iloc[0]
+            zeit = df[time_column].iloc[0]
+
+        # Convert time to minutes
+        if time_column == 'Artificial Time [s]':
+            zeit = zeit / 60  # Convert seconds to minutes
+        else:
+            zeit = zeit * (0.000001 / 60)  # Existing conversion for non-artificial time
+
         average_speed = round(weg / zeit, 2) if zeit != 0 else 0
-        
+
         result = {
             "Total Distance (mm)": weg,
             "Total Time (min)": zeit,
             "Average Speed (mm/min)": average_speed
         }
-        
+
         return result, average_speed
-        
     except Exception as e:
-        st.error(f"Error in advance rate calculation: {e}")
+        st.error(f"Error calculating advance rate stats: {str(e)}")
         return None, 0
 
 # Penetration rate calculation function
-def calculate_penetration_rate(row):
+def calculate_penetration_rate(row, revolution_col):
     try:
         speed = row['Average Speed (mm/min)']
-        revolution = row['Revolution [rpm]']
-        
+        revolution = row[revolution_col]
+
         if pd.isna(speed) or pd.isna(revolution):
             return np.nan
         elif revolution == 0:
             return np.inf if speed != 0 else 0
         else:
             return round(speed / revolution, 4)
-            
     except Exception as e:
-        st.error(f"Error in penetration rate calculation: {e}")
+        st.error(f"Error calculating penetration rate: {str(e)}")
         return np.nan
 
 # Function to calculate torque
@@ -133,7 +120,6 @@ def calculate_derived_features(df, working_pressure_col, revolution_col, n1, tor
         st.error(f"Error calculating derived features: {str(e)}")
         return df
 
-
 # Helper functions for column identification
 def identify_special_columns(df):
     working_pressure_keywords = ['working pressure', 'arbeitsdruck', 'sr_arbdr', 'SR_Arbdr','pressure', 'druck', 'arbdr']
@@ -149,7 +135,6 @@ def identify_special_columns(df):
 def get_distance_columns(df):
     distance_keywords = ['distance', 'length', 'travel', 'chainage', 'Tunnellänge Neu', 'Tunnellänge', 'Weg_mm_Z', 'VTP_Weg']
     return [col for col in df.columns if any(keyword in col.lower() for keyword in distance_keywords)]
-
 
 def get_time_column(df):
     time_keywords = ['relativzeit', 'relative time', 'time', 'datum', 'date', 'zeit', 'timestamp', 'Relative Time', 'Relativzeit', 'Artificial Time [s]']
@@ -198,7 +183,6 @@ def preprocess_rock_strength_data(df):
     except Exception as e:
         st.error(f"Error preprocessing rock strength data: {e}")
         return None
-
 
 # Updated function to create comparison chart for machine parameters vs rock strength
 def create_rock_strength_comparison_chart(df, rock_df, rock_type, selected_features):
@@ -262,7 +246,6 @@ def create_rock_strength_comparison_chart(df, rock_df, rock_type, selected_featu
         st.error(f"Error creating rock strength comparison chart: {e}")
         return None
 
-
 def rename_columns(df, working_pressure_col, revolution_col, distance_col, advance_rate_col):
     column_mapping = {
         working_pressure_col: 'Working pressure [bar]',
@@ -271,7 +254,6 @@ def rename_columns(df, working_pressure_col, revolution_col, distance_col, advan
         advance_rate_col: 'Advance rate [mm/min]'
     }
     return df.rename(columns=column_mapping)
-
 
 # Updated function to visualize correlation heatmap with dynamic input
 def create_correlation_heatmap(df, selected_features):
@@ -294,7 +276,6 @@ def create_correlation_heatmap(df, selected_features):
         st.pyplot(fig)
     except Exception as e:
         st.error(f"Error creating correlation heatmap: {str(e)}")
-
 
 # Updated function to create statistical summary
 def create_statistical_summary(df, selected_features, round_to=2):
@@ -413,7 +394,6 @@ def create_features_vs_time(df, selected_features, time_column):
 
     st.plotly_chart(fig, use_container_width=True)
 
-
 # Updated function to create Pressure Distribution Over Time Polar Plot with Plotly
 def create_pressure_distribution_polar_plot(df, pressure_column, time_column):
     try:
@@ -472,9 +452,6 @@ def create_pressure_distribution_polar_plot(df, pressure_column, time_column):
         st.plotly_chart(fig)
     except Exception as e:
         st.error(f"Error creating pressure distribution polar plot: {e}")
-
-
-
 
 def create_parameters_vs_chainage(df, selected_features, chainage_column):
     if not selected_features:
@@ -550,8 +527,6 @@ def create_parameters_vs_chainage(df, selected_features, chainage_column):
     fig.update_xaxes(title_text='Chainage [mm]', row=len(available_features), col=1)
 
     st.plotly_chart(fig, use_container_width=True)
-
-
 
 # Updated function to create multi-axis box plots with additional features
 def create_multi_axis_box_plots(df, selected_features):
@@ -692,6 +667,13 @@ def suggest_column(df, keywords):
             return col
     return None
 
+def get_time_column(df):
+    time_keywords = ['relativzeit', 'relative time', 'time', 'datum', 'date', 'zeit', 'timestamp', 'Relative Time', 'Relativzeit', 'Artificial Time [s]']
+    for col in df.columns:
+        if any(keyword in col.lower() for keyword in time_keywords):
+            return col
+    return None
+
 def create_thrust_force_plots(df, advance_rate_col):
     try:
         # Updated column identification with more comprehensive keywords
@@ -773,8 +755,6 @@ def create_thrust_force_plots(df, advance_rate_col):
     except Exception as e:
         st.error(f"Error creating thrust force plots: {e}")
 
-
-
 def safe_selectbox(label, options, suggested_option):
     try:
         if suggested_option and suggested_option in options:
@@ -785,50 +765,18 @@ def safe_selectbox(label, options, suggested_option):
         index = 0  # Default to 'None' if suggested_option is not in options
     return st.sidebar.selectbox(label, options, index=index)
 
-# Add these functions after the existing helper functions and before the visualization functions
-
-def calculate_advance_rate_and_stats(df, distance_column, time_column):
-    try:
-        df[distance_column] = pd.to_numeric(df[distance_column], errors='coerce')
-        df[time_column] = pd.to_numeric(df[time_column], errors='coerce')
-
-        if len(df) > 1:
-            weg = round(df[distance_column].max() - df[distance_column].min(), 2)
-            zeit = round(df[time_column].max() - df[time_column].min(), 2)
-        else:
-            weg = df[distance_column].iloc[0]
-            zeit = df[time_column].iloc[0]
-
-        zeit = zeit * (0.000001 / 60)
-
-        average_speed = round(weg / zeit, 2) if zeit != 0 else 0
-
-        result = {
-            "Total Distance (mm)": weg,
-            "Total Time (min)": zeit,
-            "Average Speed (mm/min)": average_speed
-        }
-
-        return result, average_speed
-    except Exception as e:
-        st.error(f"Error calculating advance rate stats: {str(e)}")
-        return None, 0
-
-
-def calculate_penetration_rate(row, revolution_col):
-    try:
-        speed = row['Average Speed (mm/min)']
-        revolution = row[revolution_col]
-
-        if pd.isna(speed) or pd.isna(revolution):
-            return np.nan
-        elif revolution == 0:
-            return np.inf if speed != 0 else 0
-        else:
-            return round(speed / revolution, 4)
-    except Exception as e:
-        st.error(f"Error calculating penetration rate: {str(e)}")
-        return np.nan
+def create_artificial_time_column(df, sampling_rate):
+    """
+    Create an artificial time column based on the dataset length and sampling rate.
+    
+    :param df: DataFrame
+    :param sampling_rate: Time interval between rows in seconds
+    :return: DataFrame with new time column
+    """
+    num_rows = len(df)
+    time_column = pd.Series(np.arange(0, num_rows * sampling_rate, sampling_rate))
+    df['Artificial Time [s]'] = time_column
+    return df
 
 # Main function
 def main():
@@ -889,8 +837,8 @@ def main():
 
                 all_features = df_viz.columns.tolist()
                 
-                time_column = get_time_column(df)
-                
+                time_column = get_time_column(df_viz)
+
                 if time_column is None:
                     st.warning("No time column detected in the dataset.")
                     sampling_rate = st.selectbox(
@@ -905,10 +853,9 @@ def main():
                         "1 minute": 60
                     }[sampling_rate]
                     
-                    df = create_artificial_time_column(df, sampling_rate_seconds)
+                    df_viz = create_artificial_time_column(df_viz, sampling_rate_seconds)
                     time_column = 'Artificial Time [s]'
                     st.success(f"Artificial time column created with sampling rate: {sampling_rate}")
-                
 
                 options = ['Statistical Summary', 'Parameters vs Chainage', 'Box Plots', 'Violin Plots', 'Thrust Force Plots', 'Correlation Heatmap']
                 if time_column:
