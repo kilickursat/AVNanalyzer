@@ -178,7 +178,7 @@ def read_rock_strength_data(file):
         return None
 def validate_data(df):
     # 1. Check for required columns
-    required_columns = ['working pressure', 'revolution', 'distance']
+    required_columns = ['Working Pressure [bar]', 'Revolution [rpm]', 'distance/chainage']
     missing_columns = [col for col in required_columns if not any(col in c.lower() for c in df.columns)]
     
     if missing_columns:
