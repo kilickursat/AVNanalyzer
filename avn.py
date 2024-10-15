@@ -65,10 +65,6 @@ def calculate_penetration_rate(row, revolution_col):
     except Exception as e:
         st.error(f"Error calculating penetration rate: {str(e)}")
         return np.nan
-            
-    except Exception as e:
-        st.error(f"Error in penetration rate calculation: {e}")
-        return np.nan
 
 # Function to calculate torque
 def calculate_torque(working_pressure, torque_constant, current_speed=None, n1=None):
@@ -161,6 +157,12 @@ def load_data(file):
             st.error("The uploaded file is empty or not formatted correctly.")
             return None
 
+        # Remove unnamed columns
+        df = df.loc[:, ~df.columns.str.contains('^Unnamed')]
+
+        # Remove columns that contain only NaN values
+        df = df.dropna(axis=1, how='all')
+
         return df
         
     except Exception as e:
@@ -174,7 +176,53 @@ def read_rock_strength_data(file):
     except Exception as e:
         st.error(f"Error reading rock strength data: {e}")
         return None
-
+def validate_data(df):
+    # 1. Check for required columns
+    required_columns = ['working pressure', 'revolution', 'distance']
+    missing_columns = [col for col in required_columns if not any(col in c.lower() for c in df.columns)]
+    
+    if missing_columns:
+        st.warning(f"The following required columns are missing: {', '.join(missing_columns)}")
+        return False
+    
+    # 2. Check for non-numeric data in numeric columns
+    numeric_issues = []
+    for col in df.columns:
+        if df[col].dtype == 'object':
+            try:
+                pd.to_numeric(df[col], errors='raise')
+            except ValueError:
+                numeric_issues.append(col)
+    
+    if numeric_issues:
+        st.warning(f"The following columns contain non-numeric data: {', '.join(numeric_issues)}")
+        return False
+    
+    # 3. Check for empty dataframe
+    if df.empty:
+        st.warning("The dataframe is empty.")
+        return False
+    
+    # 4. Check for sufficient data points
+    if len(df) < 10:  # You can adjust this threshold
+        st.warning(f"Insufficient data points. Found {len(df)}, expected at least 10.")
+        return False
+    
+    # 5. Check for extreme values or outliers (example for 'working pressure')
+    pressure_col = next((col for col in df.columns if 'working pressure' in col.lower()), None)
+    if pressure_col:
+        q1 = df[pressure_col].quantile(0.25)
+        q3 = df[pressure_col].quantile(0.75)
+        iqr = q3 - q1
+        lower_bound = q1 - (1.5 * iqr)
+        upper_bound = q3 + (1.5 * iqr)
+        outliers = df[(df[pressure_col] < lower_bound) | (df[pressure_col] > upper_bound)]
+        if not outliers.empty:
+            st.warning(f"Found {len(outliers)} potential outliers in the '{pressure_col}' column.")
+    
+    # If all checks pass
+    return True
+    
 # Function to preprocess the rock strength data
 def preprocess_rock_strength_data(df):
     try:
@@ -827,6 +875,9 @@ def main():
             df = load_data(uploaded_file)
 
             if df is not None:
+                if validate_data(df):
+                    st.success("Data validation passed. Proceeding with analysis.")
+                    
                 working_pressure_cols, revolution_cols, advance_rate_cols = identify_special_columns(df)
 
                 suggested_working_pressure = suggest_column(df, ['working pressure', 'arbeitsdruck', 'pressure', 'druck', 'arbdr', 'sr_arbdr','SR_Arbdr'])
