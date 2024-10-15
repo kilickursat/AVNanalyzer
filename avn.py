@@ -177,15 +177,27 @@ def read_rock_strength_data(file):
         st.error(f"Error reading rock strength data: {e}")
         return None
 def validate_data(df):
-    # 1. Check for required columns
-    required_columns = ['Working Pressure [bar]', 'Revolution [rpm]', 'distance/chainage']
-    missing_columns = [col for col in required_columns if not any(col in c.lower() for c in df.columns)]
-    
-    if missing_columns:
-        st.warning(f"The following required columns are missing: {', '.join(missing_columns)}")
+    # Use helper functions to identify special columns
+    working_pressure_cols, revolution_cols, advance_rate_cols = identify_special_columns(df)
+    distance_cols = get_distance_columns(df)
+    time_col = get_time_column(df)
+
+    # Check for required column types
+    missing_column_types = []
+    if not working_pressure_cols:
+        missing_column_types.append("Working Pressure")
+    if not revolution_cols:
+        missing_column_types.append("Revolution")
+    if not distance_cols:
+        missing_column_types.append("Distance/Chainage")
+    if not time_col:
+        missing_column_types.append("Time")
+
+    if missing_column_types:
+        st.warning(f"The following required column types are missing: {', '.join(missing_column_types)}")
         return False
-    
-    # 2. Check for non-numeric data in numeric columns
+
+    # Check for non-numeric data in numeric columns
     numeric_issues = []
     for col in df.columns:
         if df[col].dtype == 'object':
@@ -193,24 +205,24 @@ def validate_data(df):
                 pd.to_numeric(df[col], errors='raise')
             except ValueError:
                 numeric_issues.append(col)
-    
+
     if numeric_issues:
         st.warning(f"The following columns contain non-numeric data: {', '.join(numeric_issues)}")
         return False
-    
-    # 3. Check for empty dataframe
+
+    # Check for empty dataframe
     if df.empty:
         st.warning("The dataframe is empty.")
         return False
-    
-    # 4. Check for sufficient data points
+
+    # Check for sufficient data points
     if len(df) < 10:  # You can adjust this threshold
         st.warning(f"Insufficient data points. Found {len(df)}, expected at least 10.")
         return False
-    
-    # 5. Check for extreme values or outliers (example for 'working pressure')
-    pressure_col = next((col for col in df.columns if 'working pressure' in col.lower()), None)
-    if pressure_col:
+
+    # Check for extreme values or outliers (example for working pressure)
+    if working_pressure_cols:
+        pressure_col = working_pressure_cols[0]
         q1 = df[pressure_col].quantile(0.25)
         q3 = df[pressure_col].quantile(0.75)
         iqr = q3 - q1
@@ -219,7 +231,7 @@ def validate_data(df):
         outliers = df[(df[pressure_col] < lower_bound) | (df[pressure_col] > upper_bound)]
         if not outliers.empty:
             st.warning(f"Found {len(outliers)} potential outliers in the '{pressure_col}' column.")
-    
+
     # If all checks pass
     return True
     
