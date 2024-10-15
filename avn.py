@@ -699,8 +699,7 @@ def create_thrust_force_plots(df, advance_rate_col):
         # Plot 1: Thrust Force vs Penetration Rate
         if 'Penetration Rate [mm/rev]' in df.columns:
             mask = df['Penetration Rate [mm/rev]'].notna()
-            fig.add_trace(go.Scatter(
-                x=df.loc[mask, 'Penetration Rate [mm/rev]'], 
+            fig.add_trace(go.Scatter(x=df.loc[mask, 'Penetration Rate [mm/rev]'], 
                 y=df.loc[mask, thrust_force_col], 
                 mode='markers', 
                 name='vs Penetration Rate', 
@@ -755,6 +754,7 @@ def create_thrust_force_plots(df, advance_rate_col):
         st.plotly_chart(fig)
     except Exception as e:
         st.error(f"Error creating thrust force plots: {e}")
+
 def safe_selectbox(label, options, suggested_option):
     try:
         if suggested_option and suggested_option in options:
@@ -827,9 +827,9 @@ def main():
 
                 if working_pressure_col != 'None' and revolution_col != 'None':
                     df = calculate_derived_features(df, working_pressure_col, revolution_col, n1, torque_constant, selected_distance)
-                
+
                 time_column = get_time_column(df)
-                
+
                 if time_column is None:
                     st.warning("No time column detected in the dataset.")
                     sampling_rate = st.selectbox(
@@ -847,11 +847,12 @@ def main():
                     df = create_artificial_time_column(df, sampling_rate_seconds)
                     time_column = 'Artificial Time [s]'
                     st.success(f"Artificial time column created with sampling rate: {sampling_rate}")
-                
+
                     # Recalculate derived features with the new time column
                     df = calculate_derived_features(df, working_pressure_col, revolution_col, n1, torque_constant, selected_distance, time_column)
-                
+
                 df_viz = rename_columns(df.copy(), working_pressure_col, revolution_col, selected_distance, advance_rate_col)
+
                 all_features = df_viz.columns.tolist()
 
                 options = ['Statistical Summary', 'Parameters vs Chainage', 'Box Plots', 'Violin Plots', 'Thrust Force Plots', 'Correlation Heatmap']
@@ -958,3 +959,4 @@ def main():
     
 if __name__ == "__main__":
     main()
+                x=df
