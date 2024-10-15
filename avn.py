@@ -853,14 +853,10 @@ def main():
             df = load_data(uploaded_file)
 
             if df is not None:
-                st.write("Columns in the dataset:", df.columns.tolist())
-                st.write("Sample data:", df.head())
                     
                 working_pressure_cols, revolution_cols, advance_rate_cols = identify_special_columns(df)
                 
-                st.write("Identified working pressure columns:", working_pressure_cols)
-                st.write("Identified revolution columns:", revolution_cols)
-                st.write("Identified advance rate columns:", advance_rate_cols)
+
 
                 suggested_working_pressure = suggest_column(df, ['working pressure', 'arbeitsdruck', 'pressure', 'druck', 'arbdr', 'sr_arbdr','SR_Arbdr'])
                 suggested_revolution = suggest_column(df, ['revolution', 'drehzahl', 'rpm', 'drehz', 'sr_drehz', 'SR_Drehz'])
