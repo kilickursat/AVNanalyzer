@@ -51,19 +51,20 @@ def calculate_advance_rate_and_stats(df, distance_column, time_column):
         return None, 0
 
 # Penetration rate calculation function
-def calculate_penetration_rate(row, revolution_col):
+def calculate_penetration_rate(row):
     try:
         speed = row['Average Speed (mm/min)']
-        revolution = row[revolution_col]
-
+        revolution = row['Revolution [rpm]']
+        
         if pd.isna(speed) or pd.isna(revolution):
             return np.nan
         elif revolution == 0:
             return np.inf if speed != 0 else 0
         else:
             return round(speed / revolution, 4)
+            
     except Exception as e:
-        st.error(f"Error calculating penetration rate: {str(e)}")
+        st.error(f"Error in penetration rate calculation: {e}")
         return np.nan
 
 # Function to calculate torque
@@ -105,21 +106,11 @@ def calculate_derived_features(df, working_pressure_col, revolution_col, n1, tor
         time_column = get_time_column(df)
         
         if distance_column in df.columns and time_column:
-            df[distance_column] = pd.to_numeric(df[distance_column], errors='coerce')
-            df[time_column] = pd.to_numeric(df[time_column], errors='coerce')
-            
-            # Calculate differences
-            df['distance_diff'] = df[distance_column].diff()
-            df['time_diff'] = df[time_column].diff()
-            
-            # Calculate speed for each row
-            df['Average Speed (mm/min)'] = (df['distance_diff'] / df['time_diff']) * 60  # Convert to mm/min
+            result, average_speed = calculate_advance_rate_and_stats(df, distance_column, time_column)
+            df['Average Speed (mm/min)'] = average_speed
             
             if revolution_col is not None:
-                df['Penetration Rate [mm/rev]'] = df['distance_diff'] / df[revolution_col]
-            
-            # Remove temporary columns
-            df = df.drop(['distance_diff', 'time_diff'], axis=1)
+                df['Penetration Rate [mm/rev]'] = df.apply(lambda row: calculate_penetration_rate(row, revolution_col), axis=1)
         
         return df
         
@@ -130,38 +121,26 @@ def calculate_derived_features(df, working_pressure_col, revolution_col, n1, tor
 
 # Helper functions for column identification
 def identify_special_columns(df):
-    try:
-        working_pressure_keywords = ['working pressure', 'arbeitsdruck', 'sr_arbdr', 'SR_Arbdr','pressure', 'druck', 'arbdr']
-        revolution_keywords = ['revolution', 'revolution (rpm)','drehzahl', 'rpm', 'drehz', 'sr_drehz', 'SR_Drehz','Revolution', 'Revolution [rpm]','Revolution (rpm)']
-        advance_rate_keywords = ['advance rate', 'advance rate [mm/min]', 'Advance rate', 'Advance_rate','Advance Rate','vortrieb', 'vorschub', 'VTgeschw_Z', 'geschw', 'geschw_Z']
+    working_pressure_keywords = ['working pressure', 'arbeitsdruck', 'sr_arbdr', 'SR_Arbdr','pressure', 'druck', 'arbdr']
+    revolution_keywords = ['revolution', 'revolution (rpm)','drehzahl', 'rpm', 'drehz', 'sr_drehz', 'SR_Drehz','Revolution', 'Revolution [rpm]','Revolution (rpm)']
+    advance_rate_keywords = ['advance rate', 'advance rate [mm/min]', 'Advance rate', 'Advance_rate','Advance Rate','vortrieb', 'vorschub', 'VTgeschw_Z', 'geschw', 'geschw_Z']
 
-        working_pressure_cols = [col for col in df.columns if any(kw in str(col).lower() for kw in working_pressure_keywords)]
-        revolution_cols = [col for col in df.columns if any(kw in str(col).lower() for kw in revolution_keywords)]
-        advance_rate_cols = [col for col in df.columns if any(kw in str(col).lower() for kw in advance_rate_keywords)]
+    working_pressure_cols = [col for col in df.columns if any(kw in col.lower() for kw in working_pressure_keywords)]
+    revolution_cols = [col for col in df.columns if any(kw in col.lower() for kw in revolution_keywords)]
+    advance_rate_cols = [col for col in df.columns if any(kw in col.lower() for kw in advance_rate_keywords)]
 
-        return working_pressure_cols, revolution_cols, advance_rate_cols
-    except Exception as e:
-        st.error(f"Error in identify_special_columns: {e}")
-        return [], [], []
+    return working_pressure_cols, revolution_cols, advance_rate_cols
 
 def get_distance_columns(df):
-    try:
-        distance_keywords = ['distance', 'length', 'travel', 'chainage', 'Tunnellänge Neu', 'Tunnellänge', 'Weg_mm_Z', 'VTP_Weg']
-        return [col for col in df.columns if any(keyword in str(col).lower() for keyword in distance_keywords)]
-    except Exception as e:
-        st.error(f"Error in get_distance_columns: {e}")
-        return []
+    distance_keywords = ['distance', 'length', 'travel', 'chainage', 'Tunnellänge Neu', 'Tunnellänge', 'Weg_mm_Z', 'VTP_Weg']
+    return [col for col in df.columns if any(keyword in col.lower() for keyword in distance_keywords)]
 
 def get_time_column(df):
-    try:
-        time_keywords = ['relativzeit', 'relative time','ts(utc)','time', 'datum', 'date', 'zeit', 'timestamp', 'Relative Time', 'Relativzeit']
-        for col in df.columns:
-            if any(keyword in str(col).lower() for keyword in time_keywords):
-                return col
-        return None
-    except Exception as e:
-        st.error(f"Error in get_time_column: {e}")
-        return None
+    time_keywords = ['relativzeit', 'relative time', 'time', 'datum', 'date', 'zeit', 'timestamp', 'Relative Time', 'Relativzeit']
+    for col in df.columns:
+        if any(keyword in col.lower() for keyword in time_keywords):
+            return col
+    return None
 
 # Enhanced Function to read CSV or Excel file with validation
 @st.cache_data
@@ -179,19 +158,12 @@ def load_data(file):
             st.error("The uploaded file is empty or not formatted correctly.")
             return None
 
-        # Remove unnamed columns
-        df = df.loc[:, ~df.columns.str.contains('^Unnamed')]
-
-        # Remove columns that contain only NaN values
-        df = df.dropna(axis=1, how='all')
-
-
-
         return df
         
     except Exception as e:
         st.error(f"Error loading data: {e}")
         return None
+
 def read_rock_strength_data(file):
     try:
         df = pd.read_excel(file)
@@ -199,8 +171,7 @@ def read_rock_strength_data(file):
     except Exception as e:
         st.error(f"Error reading rock strength data: {e}")
         return None
-        
-    
+
 # Function to preprocess the rock strength data
 def preprocess_rock_strength_data(df):
     try:
@@ -706,7 +677,7 @@ def suggest_column(df, keywords):
     return None
 
 def get_time_column(df):
-    time_keywords = ['relativzeit', 'relative time','ts(utc)','time', 'datum', 'date', 'zeit', 'timestamp', 'Relative Time', 'Relativzeit']
+    time_keywords = ['relativzeit', 'relative time', 'time', 'datum', 'date', 'zeit', 'timestamp', 'Relative Time', 'Relativzeit']
     for col in df.columns:
         if any(keyword in col.lower() for keyword in time_keywords):
             return col
@@ -836,6 +807,21 @@ def calculate_advance_rate_and_stats(df, distance_column, time_column):
         return None, 0
 
 
+def calculate_penetration_rate(row, revolution_col):
+    try:
+        speed = row['Average Speed (mm/min)']
+        revolution = row[revolution_col]
+
+        if pd.isna(speed) or pd.isna(revolution):
+            return np.nan
+        elif revolution == 0:
+            return np.inf if speed != 0 else 0
+        else:
+            return round(speed / revolution, 4)
+    except Exception as e:
+        st.error(f"Error calculating penetration rate: {str(e)}")
+        return np.nan
+
 # Main function
 def main():
     try:
@@ -853,10 +839,7 @@ def main():
             df = load_data(uploaded_file)
 
             if df is not None:
-                    
                 working_pressure_cols, revolution_cols, advance_rate_cols = identify_special_columns(df)
-                
-
 
                 suggested_working_pressure = suggest_column(df, ['working pressure', 'arbeitsdruck', 'pressure', 'druck', 'arbdr', 'sr_arbdr','SR_Arbdr'])
                 suggested_revolution = suggest_column(df, ['revolution', 'drehzahl', 'rpm', 'drehz', 'sr_drehz', 'SR_Drehz'])
@@ -891,7 +874,7 @@ def main():
                     
                     if 'Average Speed (mm/min)' in df.columns:
                         df['Penetration Rate [mm/rev]'] = df.apply(
-                            lambda row: calculate_penetration_rate(row,revolution_col), axis=1
+                            lambda row: calculate_penetration_rate(row, revolution_col), axis=1
                         )
 
                 df_viz = rename_columns(df.copy(), working_pressure_col, revolution_col, selected_distance, advance_rate_col)
