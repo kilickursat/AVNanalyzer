@@ -185,11 +185,7 @@ def load_data(file):
         # Remove columns that contain only NaN values
         df = df.dropna(axis=1, how='all')
 
-        # Print information about the loaded data
-        st.write("Data shape:", df.shape)
-        st.write("Column names:", df.columns.tolist())
-        st.write("Data types:", df.dtypes)
-        st.write("First few rows:", df.head())
+
 
         return df
         
