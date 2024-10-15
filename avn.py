@@ -105,11 +105,21 @@ def calculate_derived_features(df, working_pressure_col, revolution_col, n1, tor
         time_column = get_time_column(df)
         
         if distance_column in df.columns and time_column:
-            result, average_speed = calculate_advance_rate_and_stats(df, distance_column, time_column)
-            df['Average Speed (mm/min)'] = average_speed
+            df[distance_column] = pd.to_numeric(df[distance_column], errors='coerce')
+            df[time_column] = pd.to_numeric(df[time_column], errors='coerce')
+            
+            # Calculate differences
+            df['distance_diff'] = df[distance_column].diff()
+            df['time_diff'] = df[time_column].diff()
+            
+            # Calculate speed for each row
+            df['Average Speed (mm/min)'] = (df['distance_diff'] / df['time_diff']) * 60  # Convert to mm/min
             
             if revolution_col is not None:
-                df['Penetration Rate [mm/rev]'] = df.apply(lambda row: calculate_penetration_rate(row,revolution_col), axis=1)
+                df['Penetration Rate [mm/rev]'] = df['distance_diff'] / df[revolution_col]
+            
+            # Remove temporary columns
+            df = df.drop(['distance_diff', 'time_diff'], axis=1)
         
         return df
         
@@ -176,10 +186,15 @@ def read_rock_strength_data(file):
     except Exception as e:
         st.error(f"Error reading rock strength data: {e}")
         return None
+        
 def validate_data(df):
     # Use helper functions to identify special columns
     working_pressure_cols, revolution_cols, advance_rate_cols = identify_special_columns(df)
     distance_cols = get_distance_columns(df)
+    if not distance_cols:
+        st.warning("No distance/chainage column found. Please select one manually.")
+        distance_cols = [st.selectbox("Select distance/chainage column", df.columns)]
+            
     time_col = get_time_column(df)
 
     # Check for required column types
@@ -887,6 +902,9 @@ def main():
             df = load_data(uploaded_file)
 
             if df is not None:
+                st.write("Columns in the dataset:", df.columns.tolist())
+                st.write("Sample data:", df.head())
+                
                 if validate_data(df):
                     st.success("Data validation passed. Proceeding with analysis.")
                     
