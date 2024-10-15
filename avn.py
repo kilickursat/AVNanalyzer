@@ -204,68 +204,6 @@ def read_rock_strength_data(file):
         st.error(f"Error reading rock strength data: {e}")
         return None
         
-def validate_data(df):
-    # Use helper functions to identify special columns
-    working_pressure_cols, revolution_cols, advance_rate_cols = identify_special_columns(df)
-    distance_cols = get_distance_columns(df)
-    if not distance_cols:
-        st.warning("No distance/chainage column found. Please select one manually.")
-        distance_cols = [st.selectbox("Select distance/chainage column", df.columns)]
-            
-    time_col = get_time_column(df)
-
-    # Check for required column types
-    missing_column_types = []
-    if not working_pressure_cols:
-        missing_column_types.append("Working Pressure")
-    if not revolution_cols:
-        missing_column_types.append("Revolution")
-    if not distance_cols:
-        missing_column_types.append("Distance/Chainage")
-    if not time_col:
-        missing_column_types.append("Time")
-
-    if missing_column_types:
-        st.warning(f"The following required column types are missing: {', '.join(missing_column_types)}")
-        return False
-
-    # Check for non-numeric data in numeric columns
-    numeric_issues = []
-    for col in df.columns:
-        if df[col].dtype == 'object':
-            try:
-                pd.to_numeric(df[col], errors='raise')
-            except ValueError:
-                numeric_issues.append(col)
-
-    if numeric_issues:
-        st.warning(f"The following columns contain non-numeric data: {', '.join(numeric_issues)}")
-        return False
-
-    # Check for empty dataframe
-    if df.empty:
-        st.warning("The dataframe is empty.")
-        return False
-
-    # Check for sufficient data points
-    if len(df) < 10:  # You can adjust this threshold
-        st.warning(f"Insufficient data points. Found {len(df)}, expected at least 10.")
-        return False
-
-    # Check for extreme values or outliers (example for working pressure)
-    if working_pressure_cols:
-        pressure_col = working_pressure_cols[0]
-        q1 = df[pressure_col].quantile(0.25)
-        q3 = df[pressure_col].quantile(0.75)
-        iqr = q3 - q1
-        lower_bound = q1 - (1.5 * iqr)
-        upper_bound = q3 + (1.5 * iqr)
-        outliers = df[(df[pressure_col] < lower_bound) | (df[pressure_col] > upper_bound)]
-        if not outliers.empty:
-            st.warning(f"Found {len(outliers)} potential outliers in the '{pressure_col}' column.")
-
-    # If all checks pass
-    return True
     
 # Function to preprocess the rock strength data
 def preprocess_rock_strength_data(df):
@@ -921,9 +859,6 @@ def main():
             if df is not None:
                 st.write("Columns in the dataset:", df.columns.tolist())
                 st.write("Sample data:", df.head())
-                
-                if validate_data(df):
-                    st.success("Data validation passed. Proceeding with analysis.")
                     
                 working_pressure_cols, revolution_cols, advance_rate_cols = identify_special_columns(df)
                 
