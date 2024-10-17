@@ -832,10 +832,6 @@ def average_data_by_time(df, time_col, features, interval='1S'):
     # Modify the thrust force calculation in the relevant functions
     df_viz['Thrust Force per Ring [kN]'] = df_viz['Thrust Force [kN]'] / cutting_rings
     
-    # Apply filtering when creating plots
-    if selected_option == 'Parameters vs Chainage':
-        filtered_df = filter_chainage(df_viz, chainage_start * 1000, chainage_end * 1000)
-        create_parameters_vs_chainage(filtered_df, selected_features, 'Chainage [mm]')
 
 # For Features vs Time, add sampling rate detection and averaging
 def detect_sampling_rate(df, time_col):
