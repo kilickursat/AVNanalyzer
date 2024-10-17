@@ -982,7 +982,7 @@ def main():
 
                         if time_column:
                             try:
-                                df_viz[time_column] = pd.to_datetime(df_viz[time_column], infer_datetime_format=True, errors='coerce')
+                                df_viz[time_column] = pd.to_datetime(df_viz[time_column], errors='coerce')
                                 df_viz.dropna(subset=[time_column], inplace=True)
                                 df_viz.sort_values(by=time_column, inplace=True)
         
