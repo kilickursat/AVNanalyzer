@@ -114,7 +114,7 @@ def calculate_advance_rate_and_stats(df, distance_column, time_column):
         }
         
         return result, average_speed
-        
+            
     except Exception as e:
         st.error(f"Error in advance rate calculation: {e}")
         return None, 0
@@ -178,7 +178,7 @@ def calculate_derived_features(df, working_pressure_col, revolution_col, n1, tor
                 df['Penetration Rate [mm/rev]'] = df.apply(lambda row: calculate_penetration_rate(row, revolution_col), axis=1)
         
         return df
-        
+            
     except Exception as e:
         st.error(f"Error calculating derived features: {str(e)}")
         return df
@@ -200,7 +200,7 @@ def get_distance_columns(df):
     return [col for col in df.columns if any(keyword in col.lower() for keyword in distance_keywords)]
 
 def get_time_column(df):
-    time_keywords = ['relativzeit', 'relative time', 'time', 'datum', 'date', 'zeit', 'timestamp', 'relative time']
+    time_keywords = ['relativzeit', 'relative time', 'time', 'datum', 'date', 'zeit', 'timestamp', 'Relative Time', 'Relativzeit']
     for col in df.columns:
         if any(keyword in col.lower() for keyword in time_keywords):
             return col
@@ -228,7 +228,7 @@ def load_data(file):
         df.columns = [col.strip() for col in df.columns]
 
         return df
-        
+            
     except Exception as e:
         st.error(f"Error loading data: {e}")
         return None
@@ -339,7 +339,7 @@ def rename_columns(df, working_pressure_col, revolution_col, distance_col, advan
         column_mapping[advance_rate_col] = 'Advance rate [mm/min]'
     return df.rename(columns=column_mapping)
 
-# Updated function to create correlation heatmap with dynamic input
+# Updated function to visualize correlation heatmap with dynamic input
 def create_correlation_heatmap(df, selected_features):
     if len(selected_features) < 2:
         st.warning("Please select at least two features for the correlation heatmap.")
@@ -431,87 +431,73 @@ def create_statistical_summary(df, selected_features, round_to=2):
     # Display the styled table
     st.markdown(final_html, unsafe_allow_html=True)
 
-# Updated function to create time series plot with dynamic averaging
-def create_features_vs_time(df, selected_features, time_column, aggregation):
+# Updated function to create Features vs Time plot with averaging based on sampling rate
+def create_features_vs_time(df, selected_features, time_column, aggregation=None):
     if not selected_features:
         st.warning("Please select at least one feature for the time series plot.")
         return
 
-    colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEEAD', '#D4A5A5',
-              '#9B6B6B', '#E9967A', '#4682B4', '#6B8E23']  # Expanded color palette
+    try:
+        # Determine sampling rate and aggregation
+        if aggregation is None:
+            # Calculate the average sampling interval
+            df['time_diff'] = df[time_column].diff().dt.total_seconds()
+            average_sampling_interval = df['time_diff'].median()
 
-    fig = make_subplots(rows=len(selected_features), cols=1,
-                        shared_xaxes=True,
-                        subplot_titles=selected_features,
-                        vertical_spacing=0.05)  # Reduce spacing between subplots
+            if average_sampling_interval < 1:
+                aggregation = '1S'  # Every second
+            else:
+                aggregation = '1T'  # Every minute
 
-    for i, feature in enumerate(selected_features, start=1):
-        fig.add_trace(
-            go.Scatter(
-                x=df[time_column],
-                y=df[feature],
-                mode='lines',
-                name=feature,
-                line=dict(color=colors[i % len(colors)], width=2)
+        # Aggregate data
+        df_aggregated = df.resample(aggregation, on=time_column).mean().reset_index()
+
+        colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEEAD', '#D4A5A5',
+                  '#9B6B6B', '#E9967A', '#4682B4', '#6B8E23']  # Expanded color palette
+
+        fig = make_subplots(rows=len(selected_features), cols=1,
+                            shared_xaxes=True,
+                            subplot_titles=selected_features,
+                            vertical_spacing=0.05)  # Reduce spacing between subplots
+
+        for i, feature in enumerate(selected_features, start=1):
+            fig.add_trace(
+                go.Scatter(
+                    x=df_aggregated[time_column],
+                    y=df_aggregated[feature],
+                    mode='lines',
+                    name=feature,
+                    line=dict(color=colors[i % len(colors)], width=2)
+                ),
+                row=i,
+                col=1
+            )
+
+            # Update y-axis titles
+            fig.update_yaxes(title_text=feature, row=i, col=1)
+
+        # Update layout with larger dimensions and better spacing
+        fig.update_layout(
+            height=400 * len(selected_features),  # Increased height per subplot
+            width=1200,  # Increased overall width
+            title_text='Features vs Time',
+            showlegend=True,
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=1.02,
+                xanchor="right",
+                x=1
             ),
-            row=i,
-            col=1
+            margin=dict(t=100, l=100, r=50, b=50)  # Adjusted margins
         )
 
-        # Plotting calculated and sensor-based penetration rates if available
-        if feature == 'Penetration Rate [mm/rev]':
-            if 'Calculated Penetration Rate [mm/rev]' in df.columns:
-                fig.add_trace(
-                    go.Scatter(
-                        x=df[time_column],
-                        y=df['Calculated Penetration Rate [mm/rev]'],
-                        mode='lines',
-                        name='Calculated Penetration Rate',
-                        line=dict(color='blue', dash='dash')
-                    ),
-                    row=i,
-                    col=1
-                )
-            if 'Sensor-based Penetration Rate' in df.columns:
-                fig.add_trace(
-                    go.Scatter(
-                        x=df[time_column],
-                        y=df['Sensor-based Penetration Rate'],
-                        mode='lines',
-                        name='Sensor-based Penetration Rate',
-                        line=dict(color='green', dash='dot')
-                    ),
-                    row=i,
-                    col=1
-                )
+        st.plotly_chart(fig, use_container_width=True)
 
-        # Update y-axis titles with more space
-        fig.update_yaxes(
-            title_text=feature, 
-            row=i, 
-            col=1,
-            title_standoff=40  # Increased standoff to prevent overlap
-        )
+    except Exception as e:
+        st.error(f"Error creating Features vs Time plot: {e}")
 
-    # Update layout with larger dimensions and better spacing
-    fig.update_layout(
-        height=400 * len(selected_features),  # Increased height per subplot
-        width=1200,  # Increased overall width
-        title_text='Features vs Time',
-        showlegend=True,
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=1.02,
-            xanchor="right",
-            x=1
-        ),
-        margin=dict(t=100, l=100, r=50, b=50)  # Adjusted margins
-    )
-
-    st.plotly_chart(fig, use_container_width=True)
-
-# Updated function to create pressure distribution over time polar plot with Plotly
+# Updated function to create Pressure Distribution Over Time Polar Plot with Plotly
 def create_pressure_distribution_polar_plot(df, pressure_column, time_column):
     try:
         # Check if the pressure column exists, if not, try to find a similar column
@@ -570,107 +556,111 @@ def create_pressure_distribution_polar_plot(df, pressure_column, time_column):
     except Exception as e:
         st.error(f"Error creating pressure distribution polar plot: {e}")
 
-def create_parameters_vs_chainage(df, selected_features, chainage_column, penetration_rates_available):
+# Updated function to create Parameters vs Chainage plot with averaging based on sampling rate
+def create_parameters_vs_chainage(df, selected_features, chainage_column, penetration_rates_available=False):
     if not selected_features:
         st.warning("Please select at least one feature for the chainage plot.")
         return
 
-    # Ensure the chainage column exists
-    if chainage_column not in df.columns:
-        st.error(f"Chainage column '{chainage_column}' not found in the dataset.")
-        return
+    try:
+        # Ensure the chainage column exists
+        if chainage_column not in df.columns:
+            st.error(f"Chainage column '{chainage_column}' not found in the dataset.")
+            return
 
-    # Sort the data by chainage column
-    df = df.sort_values(by=chainage_column)
+        # Sort the data by chainage column
+        df = df.sort_values(by=chainage_column)
 
-    colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEEAD', '#D4A5A5',
-              '#9B6B6B', '#E9967A', '#4682B4', '#6B8E23']
+        colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEEAD', '#D4A5A5',
+                  '#9B6B6B', '#E9967A', '#4682B4', '#6B8E23']
 
-    available_features = [f for f in selected_features if f in df.columns]
-    
-    if not available_features:
-        st.warning("None of the selected features are available in the dataset.")
-        return
+        available_features = [f for f in selected_features if f in df.columns]
+        
+        if not available_features:
+            st.warning("None of the selected features are available in the dataset.")
+            return
 
-    fig = make_subplots(rows=len(available_features), cols=1,
-                        shared_xaxes=True,
-                        subplot_titles=available_features,
-                        vertical_spacing=0.1)  # Increased spacing between subplots
+        fig = make_subplots(rows=len(available_features), cols=1,
+                            shared_xaxes=True,
+                            subplot_titles=available_features,
+                            vertical_spacing=0.1)  # Increased spacing between subplots
 
-    for i, feature in enumerate(available_features, start=1):
-        try:
-            y_data = df[feature]
-            feature_name = feature
+        for i, feature in enumerate(available_features, start=1):
+            try:
+                y_data = df[feature]
+                feature_name = feature
 
-            fig.add_trace(
-                go.Scatter(
-                    x=df[chainage_column],
-                    y=y_data,
-                    mode='lines',
-                    name=feature_name,
-                    line=dict(color=colors[i % len(colors)], width=2)
-                ),
-                row=i,
-                col=1
-            )
-            
-            # Plot Penetration Rates if available
-            if 'Penetration Rate [mm/rev]' in selected_features and penetration_rates_available:
-                if 'Calculated Penetration Rate [mm/rev]' in df.columns:
-                    fig.add_trace(
-                        go.Scatter(
-                            x=df[chainage_column],
-                            y=df['Calculated Penetration Rate [mm/rev]'],
-                            mode='lines',
-                            name='Calculated Penetration Rate',
-                            line=dict(color='blue', dash='dash')
-                        ),
-                        row=i,
-                        col=1
-                    )
-                if 'Sensor-based Penetration Rate' in df.columns:
-                    fig.add_trace(
-                        go.Scatter(
-                            x=df[chainage_column],
-                            y=df['Sensor-based Penetration Rate'],
-                            mode='lines',
-                            name='Sensor-based Penetration Rate',
-                            line=dict(color='green', dash='dot')
-                        ),
-                        row=i,
-                        col=1
-                    )
+                fig.add_trace(
+                    go.Scatter(
+                        x=df[chainage_column],
+                        y=y_data,
+                        mode='lines',
+                        name=feature_name,
+                        line=dict(color=colors[i % len(colors)], width=2)
+                    ),
+                    row=i,
+                    col=1
+                )
+                
+                # Plot Penetration Rates if available
+                if feature in ['Calculated Penetration Rate [mm/rev]', 'Penetration Rate [mm/rev]'] and penetration_rates_available:
+                    if 'Calculated Penetration Rate [mm/rev]' in df.columns:
+                        fig.add_trace(
+                            go.Scatter(
+                                x=df[chainage_column],
+                                y=df['Calculated Penetration Rate [mm/rev]'],
+                                mode='lines',
+                                name='Calculated Penetration Rate',
+                                line=dict(color='blue', dash='dash')
+                            ),
+                            row=i,
+                            col=1
+                        )
+                    if 'Sensor-based Penetration Rate' in df.columns:
+                        fig.add_trace(
+                            go.Scatter(
+                                x=df[chainage_column],
+                                y=df['Sensor-based Penetration Rate'],
+                                mode='lines',
+                                name='Sensor-based Penetration Rate',
+                                line=dict(color='green', dash='dot')
+                            ),
+                            row=i,
+                            col=1
+                        )
 
-            # Update y-axis titles with more space
-            fig.update_yaxes(
-                title_text=feature_name, 
-                row=i, 
-                col=1,
-                title_standoff=40  # Increased standoff to prevent overlap
-            )
-        except Exception as e:
-            st.warning(f"Error plotting feature '{feature}': {e}")
+                # Update y-axis titles with more space
+                fig.update_yaxes(
+                    title_text=feature_name, 
+                    row=i, 
+                    col=1,
+                    title_standoff=40  # Increased standoff to prevent overlap
+                )
+            except Exception as e:
+                st.warning(f"Error plotting feature '{feature}': {e}")
 
-    # Update layout with adjusted dimensions
-    fig.update_layout(
-        height=300 * len(available_features),  # Dynamic height based on number of features
-        width=1200,
-        title_text=f'Parameters vs Chainage',
-        showlegend=True,
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=1.02,
-            xanchor="right",
-            x=1
-        ),
-        margin=dict(t=100, l=150, r=50, b=50)  # Increased left margin for y-axis labels
-    )
+        # Update layout with adjusted dimensions
+        fig.update_layout(
+            height=300 * len(available_features),  # Dynamic height based on number of features
+            width=1200,
+            title_text=f'Parameters vs Chainage',
+            showlegend=True,
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=1.02,
+                xanchor="right",
+                x=1
+            ),
+            margin=dict(t=100, l=150, r=50, b=50)  # Increased left margin for y-axis labels
+        )
 
-    # Update x-axis title only for the bottom subplot
-    fig.update_xaxes(title_text='Chainage [mm]', row=len(available_features), col=1)
+        # Update x-axis title only for the bottom subplot
+        fig.update_xaxes(title_text='Chainage [mm]', row=len(available_features), col=1)
 
-    st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True)
+    except Exception as e:
+        st.error(f"Error creating Parameters vs Chainage plot: {e}")
 
 # Updated function to create multi-axis box plots with additional features
 def create_multi_axis_box_plots(df, selected_features):
@@ -728,7 +718,88 @@ def create_multi_axis_violin_plots(df, selected_features):
     except Exception as e:
         st.error(f"Error creating violin plots: {e}")
 
-# Enhanced Function to handle chainage filtering and data averaging based on sampling rate
+# Function to create thrust force plots
+def create_thrust_force_plots(df, advance_rate_col):
+    try:
+        # Identify thrust force column
+        thrust_force_col = next((col for col in df.columns 
+                               if any(kw in col.lower() for kw in [
+                                   'thrust force', 'vorschubkraft', 'kraft', 'kraft_max', 
+                                   'gesamtkraft', 'gesamtkraft_stz', 'gesamtkraft_vtp', 
+                                   'force'])), 
+                              None)
+        
+        if thrust_force_col is None:
+            st.warning("Thrust force column not found in the dataset.")
+            return
+
+        # Create subplots
+        fig = make_subplots(rows=3, cols=1, 
+                           subplot_titles=("Thrust Force vs Penetration Rate", 
+                                         "Thrust Force vs Average Speed", 
+                                         "Thrust Force vs Advance Rate"),
+                           vertical_spacing=0.1)
+
+        # Plot 1: Thrust Force vs Penetration Rate
+        if 'Penetration Rate [mm/rev]' in df.columns:
+            mask = df['Penetration Rate [mm/rev]'].notna()
+            fig.add_trace(go.Scatter(
+                x=df.loc[mask, 'Penetration Rate [mm/rev]'], 
+                y=df.loc[mask, thrust_force_col], 
+                mode='markers', 
+                name='vs Penetration Rate', 
+                marker=dict(color='blue', size=5)
+            ), row=1, col=1)
+        else:
+            st.warning("Penetration Rate [mm/rev] column not found in the dataset.")
+
+        # Plot 2: Thrust Force vs Average Speed
+        if 'Average Speed (mm/min)' in df.columns:
+            mask = df['Average Speed (mm/min)'].notna()
+            fig.add_trace(go.Scatter(
+                x=df.loc[mask, 'Average Speed (mm/min)'], 
+                y=df.loc[mask, thrust_force_col], 
+                mode='markers', 
+                name='vs Average Speed',
+                marker=dict(color='green', size=5)
+            ), row=2, col=1)
+        else:
+            st.warning("Average Speed (mm/min) column not found in the dataset.")
+
+        # Plot 3: Thrust Force vs Selected Advance Rate
+        if advance_rate_col and advance_rate_col in df.columns:
+            mask = df[advance_rate_col].notna()
+            fig.add_trace(go.Scatter(
+                x=df.loc[mask, advance_rate_col], 
+                y=df.loc[mask, thrust_force_col], 
+                mode='markers', 
+                name='vs Advance Rate',
+                marker=dict(color='red', size=5)
+            ), row=3, col=1)
+        else:
+            st.warning("Selected advance rate column not available for plotting.")
+
+        # Update layout with improved styling
+        fig.update_layout(
+            height=1200, 
+            width=800, 
+            title_text="Thrust Force Relationships",
+            showlegend=True,
+            template='plotly_white'
+        )
+        
+        # Update axes labels with proper units
+        fig.update_xaxes(title_text="Penetration Rate [mm/rev]", row=1, col=1)
+        fig.update_xaxes(title_text="Average Speed [mm/min]", row=2, col=1)
+        fig.update_xaxes(title_text=advance_rate_col if advance_rate_col else "Advance Rate [mm/min]", row=3, col=1)
+        
+        for i in range(1, 4):
+            fig.update_yaxes(title_text="Thrust Force [kN]", row=i, col=1)
+
+        st.plotly_chart(fig)
+    except Exception as e:
+        st.error(f"Error creating thrust force plots: {e}")
+
 def handle_chainage_filtering_and_averaging(df, selected_distance, aggregation):
     try:
         if selected_distance in df.columns:
@@ -784,9 +855,9 @@ def main():
             if df is not None:
                 working_pressure_cols, revolution_cols, advance_rate_cols = identify_special_columns(df)
 
-                suggested_working_pressure = suggest_column(df, ['working pressure', 'arbeitsdruck', 'pressure', 'druck', 'arbdr', 'sr_arbdr','SR_Arbdr'])
-                suggested_revolution = suggest_column(df, ['revolution', 'drehzahl', 'rpm', 'drehz', 'sr_drehz', 'SR_Drehz'])
-                suggested_advance_rate = suggest_column(df, ['advance rate', 'vortrieb', 'vorschub','VTgeschw','geschw'])
+                suggested_working_pressure = suggest_column(df, ['working pressure', 'arbeitsdruck', 'pressure', 'druck', 'arbdr', 'sr_arbdr','sr_arbdr','sr_arbdr'])
+                suggested_revolution = suggest_column(df, ['revolution', 'drehzahl', 'rpm', 'drehz', 'sr_drehz', 'sr_drehz','sr_drehz','SR_Drehz'])
+                suggested_advance_rate = suggest_column(df, ['advance rate', 'vortrieb', 'vorschub','vtgeschw','geschw'])
 
                 working_pressure_col = safe_selectbox(
                     "Select Working Pressure Column",
@@ -861,14 +932,17 @@ def main():
                         rock_strength_data = read_rock_strength_data(rock_strength_file)
                         if rock_strength_data is not None:
                             rock_df = preprocess_rock_strength_data(rock_strength_data)
-                            rock_type = st.sidebar.selectbox("Select Rock Type", rock_df.index)
-    
-                            if rock_df is not None and rock_type and selected_features:
-                                fig = create_rock_strength_comparison_chart(df_viz, rock_df, rock_type, selected_features)
-                                if fig is not None:
-                                    st.plotly_chart(fig)
+                            if not rock_df.empty:
+                                rock_type = st.sidebar.selectbox("Select Rock Type", rock_df.index)
+        
+                                if rock_type and selected_features:
+                                    fig = create_rock_strength_comparison_chart(df_viz, rock_df, rock_type, selected_features)
+                                    if fig is not None:
+                                        st.plotly_chart(fig)
+                                else:
+                                    st.warning("Please ensure you've selected a rock type and at least one machine parameter for comparison.")
                             else:
-                                st.warning("Please ensure you've selected a rock type and at least one machine parameter for comparison.")
+                                st.warning("Rock strength data is empty after preprocessing.")
                         else:
                             st.warning("Error processing rock strength data. Please check your file.")
                     else:
@@ -892,7 +966,7 @@ def main():
                         st.warning("Please select features for statistical analysis.")
                 elif selected_option == 'Features vs Time' and time_column:
                     if selected_features:
-                        create_features_vs_time(df_viz, selected_features, time_column, aggregation='auto')
+                        create_features_vs_time(df_viz, selected_features, time_column)
                     else:
                         st.warning("Please select features to visualize over time.")
                 elif selected_option == 'Pressure Distribution' and time_column:
@@ -905,8 +979,7 @@ def main():
                     if selected_features:
                         # **Enhancement 1: Chainage Filtering & Data Averaging Based on Sampling Rate**
                         st.sidebar.header("Chainage Filtering & Data Averaging")
-    
-                        # Detect and parse different time formats
+
                         if time_column:
                             try:
                                 df_viz[time_column] = pd.to_datetime(df_viz[time_column], infer_datetime_format=True, errors='coerce')
@@ -919,27 +992,34 @@ def main():
         
                                 st.sidebar.write(f"Detected average sampling interval: {average_sampling_interval} seconds")
         
-                                # Determine aggregation level
-                                if average_sampling_interval < 1:
-                                    aggregation = 'second'
-                                else:
-                                    aggregation = 'minute'
-        
                                 # User input for aggregation resolution
-                                if aggregation == 'second':
-                                    agg_interval = st.sidebar.selectbox("Select Aggregation Interval", ['1S', '5S', '10S', '30S'])
+                                user_sampling = st.sidebar.selectbox(
+                                    "Select Data Sampling Rate",
+                                    ['Auto Detect'] + ['Millisecond', 'Second', 'Minute']
+                                )
+
+                                if user_sampling == 'Millisecond':
+                                    aggregation = '1S'  # Aggregate every second
+                                elif user_sampling == 'Second':
+                                    aggregation = '1S'
+                                elif user_sampling == 'Minute':
+                                    aggregation = '1T'
                                 else:
-                                    agg_interval = st.sidebar.selectbox("Select Aggregation Interval", ['1T', '5T', '10T', '30T'])
-        
+                                    # Auto detect based on average_sampling_interval
+                                    if average_sampling_interval < 1:
+                                        aggregation = '1S'  # Every second
+                                    else:
+                                        aggregation = '1T'  # Every minute
+
                                 # Aggregate data based on selected interval
-                                df_viz = df_viz.resample(agg_interval, on=time_column).mean().reset_index()
-        
-                                st.sidebar.write(f"Data aggregated every {agg_interval}")
+                                df_viz = df_viz.resample(aggregation, on=time_column).mean().reset_index()
+
+                                st.sidebar.write(f"Data aggregated every {aggregation}")
                             except Exception as e:
                                 st.sidebar.error(f"Error parsing time column: {e}")
         
                         # Chainage Filtering
-                        df_viz = handle_chainage_filtering_and_averaging(df_viz, selected_distance, aggregation='auto')  # 'auto' can be replaced with actual logic based on aggregation
+                        df_viz = handle_chainage_filtering_and_averaging(df_viz, selected_distance, aggregation)
         
                         create_parameters_vs_chainage(df_viz, selected_features, 'Chainage [mm]', penetration_rates_available=('Sensor-based Penetration Rate' in df_viz.columns))
                     else:
@@ -969,6 +1049,87 @@ def main():
     st.markdown("---")
     st.markdown("© 2024 Herrenknecht AG. All rights reserved.")
     st.markdown("**Created by Kursat Kilic - Geotechnical Digitalization**")
+
+def create_thrust_force_plots(df, advance_rate_col):
+    try:
+        # Identify thrust force column
+        thrust_force_col = next((col for col in df.columns 
+                           if any(kw in col.lower() for kw in [
+                               'thrust force', 'vorschubkraft', 'kraft', 'kraft_max', 
+                               'gesamtkraft', 'gesamtkraft_stz', 'gesamtkraft_vtp', 
+                               'force'])), 
+                          None)
+        
+        if thrust_force_col is None:
+            st.warning("Thrust force column not found in the dataset.")
+            return
+
+        # Create subplots
+        fig = make_subplots(rows=3, cols=1, 
+                           subplot_titles=("Thrust Force vs Penetration Rate", 
+                                         "Thrust Force vs Average Speed", 
+                                         "Thrust Force vs Advance Rate"),
+                           vertical_spacing=0.1)
+
+        # Plot 1: Thrust Force vs Penetration Rate
+        if 'Penetration Rate [mm/rev]' in df.columns:
+            mask = df['Penetration Rate [mm/rev]'].notna()
+            fig.add_trace(go.Scatter(
+                x=df.loc[mask, 'Penetration Rate [mm/rev]'], 
+                y=df.loc[mask, thrust_force_col], 
+                mode='markers', 
+                name='vs Penetration Rate', 
+                marker=dict(color='blue', size=5)
+            ), row=1, col=1)
+        else:
+            st.warning("Penetration Rate [mm/rev] column not found in the dataset.")
+
+        # Plot 2: Thrust Force vs Average Speed
+        if 'Average Speed (mm/min)' in df.columns:
+            mask = df['Average Speed (mm/min)'].notna()
+            fig.add_trace(go.Scatter(
+                x=df.loc[mask, 'Average Speed (mm/min)'], 
+                y=df.loc[mask, thrust_force_col], 
+                mode='markers', 
+                name='vs Average Speed',
+                marker=dict(color='green', size=5)
+            ), row=2, col=1)
+        else:
+            st.warning("Average Speed (mm/min) column not found in the dataset.")
+
+        # Plot 3: Thrust Force vs Selected Advance Rate
+        if advance_rate_col and advance_rate_col in df.columns:
+            mask = df[advance_rate_col].notna()
+            fig.add_trace(go.Scatter(
+                x=df.loc[mask, advance_rate_col], 
+                y=df.loc[mask, thrust_force_col], 
+                mode='markers', 
+                name='vs Advance Rate',
+                marker=dict(color='red', size=5)
+            ), row=3, col=1)
+        else:
+            st.warning("Selected advance rate column not available for plotting.")
+
+        # Update layout with improved styling
+        fig.update_layout(
+            height=1200, 
+            width=800, 
+            title_text="Thrust Force Relationships",
+            showlegend=True,
+            template='plotly_white'
+        )
+        
+        # Update axes labels with proper units
+        fig.update_xaxes(title_text="Penetration Rate [mm/rev]", row=1, col=1)
+        fig.update_xaxes(title_text="Average Speed [mm/min]", row=2, col=1)
+        fig.update_xaxes(title_text=advance_rate_col if advance_rate_col else "Advance Rate [mm/min]", row=3, col=1)
+        
+        for i in range(1, 4):
+            fig.update_yaxes(title_text="Thrust Force [kN]", row=i, col=1)
+
+        st.plotly_chart(fig)
+    except Exception as e:
+        st.error(f"Error creating thrust force plots: {e}")
 
 if __name__ == "__main__":
     main()
