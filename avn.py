@@ -59,7 +59,7 @@ def calculate_penetration_rates(df, revolution_col, advance_rate_col):
         return df[['Calculated Penetration Rate [mm/rev]']]
 
 # In the main function, when creating plots
-#penetration_rates = calculate_penetration_rates(df_viz, revolution_col, advance_rate_col)
+penetration_rates = calculate_penetration_rates(df_viz, revolution_col, advance_rate_col)
 for rate in penetration_rates.columns:
     if rate not in selected_features:
         selected_features.append(rate)
