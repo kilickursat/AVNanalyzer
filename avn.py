@@ -1005,7 +1005,7 @@ def main():
                         st.warning("Please select a valid working pressure column.")
                 elif selected_option == 'Parameters vs Chainage':
                     if selected_features:
-                        create_parameters_vs_chainage(df_viz_filtered, selected_features, 'Chainage [mm]')
+                        create_parameters_vs_chainage(df_viz_filtered, selected_features, selected_distance)
                     else:
                         st.warning("Please select features to visualize against chainage.")
                 elif selected_option == 'Box Plots':
@@ -1032,6 +1032,7 @@ def main():
 
     except Exception as e:
         st.error(f"An unexpected error occurred in the main function: {str(e)}")
+        st.error("Please check your data and selected columns.")
 
     st.markdown("---")
     st.markdown("© 2024 Herrenknecht AG. All rights reserved.")
