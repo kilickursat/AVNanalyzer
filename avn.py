@@ -51,21 +51,18 @@ def calculate_advance_rate_and_stats(df, distance_column, time_column):
         return None, 0
 
 # Penetration rate calculation function
-def calculate_penetration_rate(row):
-    try:
-        speed = row['Average Speed (mm/min)']
-        revolution = row['Revolution [rpm]']
-        
-        if pd.isna(speed) or pd.isna(revolution):
-            return np.nan
-        elif revolution == 0:
-            return np.inf if speed != 0 else 0
-        else:
-            return round(speed / revolution, 4)
-            
-    except Exception as e:
-        st.error(f"Error in penetration rate calculation: {e}")
-        return np.nan
+def calculate_penetration_rates(df, revolution_col, advance_rate_col):
+    df['Calculated Penetration Rate [mm/rev]'] = df['Average Speed (mm/min)'] / df[revolution_col]
+    if 'Sensor Penetration Rate' in df.columns:
+        return df[['Calculated Penetration Rate [mm/rev]', 'Sensor Penetration Rate']]
+    else:
+        return df[['Calculated Penetration Rate [mm/rev]']]
+
+# In the main function, when creating plots
+penetration_rates = calculate_penetration_rates(df_viz, revolution_col, advance_rate_col)
+for rate in penetration_rates.columns:
+    if rate not in selected_features:
+        selected_features.append(rate)
 
 # Function to calculate torque
 def calculate_torque(working_pressure, torque_constant, current_speed=None, n1=None):
@@ -147,19 +144,24 @@ def get_time_column(df):
 def load_data(file):
     try:
         if file.name.endswith('.csv'):
-            df = pd.read_csv(file, sep=';', decimal=',', na_values=['', 'NA', 'N/A', 'nan', 'NaN'], keep_default_na=True)
+            # Try different encodings and delimiters
+            encodings = ['utf-8', 'iso-8859-1', 'cp1252']
+            delimiters = [',', ';', '\t']
+            for encoding in encodings:
+                for delimiter in delimiters:
+                    try:
+                        df = pd.read_csv(file, encoding=encoding, sep=delimiter)
+                        if len(df.columns) > 1:
+                            return df
+                    except:
+                        pass
+            st.error("Unable to read CSV file. Please check the file format.")
+            return None
         elif file.name.endswith('.xlsx'):
-            df = pd.read_excel(file)
+            return pd.read_excel(file)
         else:
             st.error("Unsupported file format")
             return None
-
-        if df.empty:
-            st.error("The uploaded file is empty or not formatted correctly.")
-            return None
-
-        return df
-        
     except Exception as e:
         st.error(f"Error loading data: {e}")
         return None
@@ -861,6 +863,24 @@ if selected_option == 'Features vs Time' and time_column:
         averaged_df = average_data_by_time(df_viz, time_column, selected_features, '1T')
     create_features_vs_time(averaged_df, selected_features, time_column)
 
+def normalize_time_column(df, time_column):
+    try:
+        df[time_column] = pd.to_datetime(df[time_column], infer_datetime_format=True)
+        time_diff = df[time_column].diff().median()
+        if time_diff.total_seconds() < 1:
+            df[time_column] = df[time_column].dt.floor('S')
+        elif time_diff.total_seconds() < 60:
+            df[time_column] = df[time_column].dt.floor('T')
+        else:
+            df[time_column] = df[time_column].dt.floor('H')
+        return df
+    except Exception as e:
+        st.error(f"Error normalizing time column: {e}")
+        return df
+
+# In the main function, after loading the data
+if time_column:
+    df_viz = normalize_time_column(df_viz, time_column)
 
 # Main function
 def main():
