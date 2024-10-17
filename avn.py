@@ -7,12 +7,81 @@ import seaborn as sns
 from scipy.interpolate import griddata
 from scipy import stats
 import matplotlib.pyplot as plt
+import io
 import base64
 
 # Set page config at the very beginning
 st.set_page_config(
     page_title="Herrenknecht Hard Rock Data Analysis App",
+    page_icon="https://raw.githubusercontent.com/kilickursat/torque_plot-updated/main/Herrenknecht_logo.svg-1024x695.png",
+    layout="wide"
 )
+
+def set_background_color():
+    st.markdown(
+        """
+        <style>
+        .stApp {
+            background-color: rgb(220, 234, 197);
+            color: black;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+
+def add_logo():
+    try:
+        st.sidebar.markdown(
+            """
+            <style>
+            [data-testid="stSidebar"] {
+                background-image: url(https://github.com/kilickursat/AVNanalyzer/raw/main/Herrenknecht_logo.svg);
+                background-repeat: no-repeat;
+                background-size: 120px;
+                background-position: 10px 10px;
+                padding-top: 120px;  /* Consistent padding */
+            }
+            [data-testid="stSidebar"]::before {
+                content: "";
+                margin-bottom: 20px;  /* Consistent margin */
+                display: block;
+            }
+            [data-testid="stSidebar"] > div:first-child {
+                padding-top: 0;  /* Remove additional padding */
+            }
+            .sidebar-content {
+                padding-top: 0;  /* Remove additional padding */
+            }
+            .sidebar-content > * {
+                margin-bottom: 0.5rem !important;
+            }
+            /* Consistent font sizes for headers */
+            .sidebar .sidebar-content div[data-testid="stMarkdownContainer"] > h1 {
+                font-size: 1.5em;
+                margin-top: 0;
+            }
+            .sidebar .sidebar-content div[data-testid="stMarkdownContainer"] > h2 {
+                font-size: 1.2em;
+                margin-top: 0;
+            }
+            /* Consistent sizing for file uploader */
+            .sidebar .sidebar-content [data-testid="stFileUploader"] {
+                margin-bottom: 0.5rem;
+            }
+            /* Consistent spacing for radio buttons */
+            .sidebar .sidebar-content [data-testid="stRadio"] {
+                margin-bottom: 0.5rem;
+            }
+            .sidebar .sidebar-content [data-testid="stRadio"] > div {
+                margin-bottom: 0.2rem;
+            }
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
+    except Exception as e:
+        st.error(f"Failed to add logo: {e}")
 
 # Helper function to clean numeric columns
 def clean_numeric_column(df, column_name):
@@ -51,10 +120,10 @@ def calculate_advance_rate_and_stats(df, distance_column, time_column):
         return None, 0
 
 # Penetration rate calculation function
-def calculate_penetration_rate(row):
+def calculate_penetration_rate(row, revolution_col):
     try:
         speed = row['Average Speed (mm/min)']
-        revolution = row['Revolution [rpm]']
+        revolution = row[revolution_col]
         
         if pd.isna(speed) or pd.isna(revolution):
             return np.nan
@@ -68,7 +137,7 @@ def calculate_penetration_rate(row):
         return np.nan
 
 # Function to calculate torque
-def calculate_torque(working_pressure, torque_constant, current_speed=None, n1=None):
+def calculate_torque(working_pressure, torque_constant, current_speed=None, n1=None, cutting_rings=1):
     if current_speed is None or n1 is None:
         torque = working_pressure * torque_constant
     else:
@@ -76,10 +145,10 @@ def calculate_torque(working_pressure, torque_constant, current_speed=None, n1=N
             torque = working_pressure * torque_constant
         else:
             torque = (n1 / current_speed) * torque_constant * working_pressure
-    return torque
+    return torque / cutting_rings  # Division by cutting rings
 
 # Function to calculate derived features
-def calculate_derived_features(df, working_pressure_col, revolution_col, n1, torque_constant, selected_distance):
+def calculate_derived_features(df, working_pressure_col, revolution_col, n1, torque_constant, selected_distance, cutting_rings):
     try:
         if working_pressure_col is not None and revolution_col is not None:
             df[working_pressure_col] = pd.to_numeric(df[working_pressure_col], errors='coerce')
@@ -92,11 +161,7 @@ def calculate_derived_features(df, working_pressure_col, revolution_col, n1, tor
                 if pd.isna(working_pressure) or pd.isna(current_speed):
                     return np.nan
 
-                if current_speed < n1:
-                    torque = working_pressure * torque_constant
-                else:
-                    torque = (n1 / current_speed) * torque_constant * working_pressure
-
+                torque = calculate_torque(working_pressure, torque_constant, current_speed, n1, cutting_rings)
                 return round(torque, 2)
 
             df['Calculated torque [kNm]'] = df.apply(calculate_torque_wrapper, axis=1)
@@ -118,7 +183,6 @@ def calculate_derived_features(df, working_pressure_col, revolution_col, n1, tor
         st.error(f"Error calculating derived features: {str(e)}")
         return df
 
-
 # Helper functions for column identification
 def identify_special_columns(df):
     working_pressure_keywords = ['working pressure', 'arbeitsdruck', 'sr_arbdr', 'SR_Arbdr','pressure', 'druck', 'arbdr']
@@ -132,11 +196,11 @@ def identify_special_columns(df):
     return working_pressure_cols, revolution_cols, advance_rate_cols
 
 def get_distance_columns(df):
-    distance_keywords = ['distance', 'length', 'travel', 'chainage', 'Tunnellänge Neu', 'Tunnellänge', 'Weg_mm_Z', 'VTP_Weg']
+    distance_keywords = ['distance', 'length', 'travel', 'chainage', 'tunnellänge neu', 'tunnellänge', 'weg_mm_z', 'vtp_weg']
     return [col for col in df.columns if any(keyword in col.lower() for keyword in distance_keywords)]
 
 def get_time_column(df):
-    time_keywords = ['relativzeit', 'relative time', 'time', 'datum', 'date', 'zeit', 'timestamp', 'Relative Time', 'Relativzeit']
+    time_keywords = ['relativzeit', 'relative time', 'time', 'datum', 'date', 'zeit', 'timestamp', 'relative time']
     for col in df.columns:
         if any(keyword in col.lower() for keyword in time_keywords):
             return col
@@ -147,9 +211,11 @@ def get_time_column(df):
 def load_data(file):
     try:
         if file.name.endswith('.csv'):
-            df = pd.read_csv(file, sep=';', decimal=',', na_values=['', 'NA', 'N/A', 'nan', 'NaN'], keep_default_na=True)
+            df = pd.read_csv(file, sep=';', decimal=',', na_values=['', 'NA', 'N/A', 'nan', 'NaN'], keep_default_na=True, engine='python')
+            df.columns = df.columns.str.strip()  # Trim whitespace from column names
         elif file.name.endswith('.xlsx'):
             df = pd.read_excel(file)
+            df.columns = df.columns.str.strip()  # Trim whitespace from column names
         else:
             st.error("Unsupported file format")
             return None
@@ -157,6 +223,9 @@ def load_data(file):
         if df.empty:
             st.error("The uploaded file is empty or not formatted correctly.")
             return None
+        
+        # Ensure all columns are properly read
+        df.columns = [col.strip() for col in df.columns]
 
         return df
         
@@ -166,7 +235,20 @@ def load_data(file):
 
 def read_rock_strength_data(file):
     try:
-        df = pd.read_excel(file)
+        if file.name.endswith('.csv'):
+            df = pd.read_csv(file, sep=';', decimal=',', na_values=['', 'NA', 'N/A', 'nan', 'NaN'], keep_default_na=True, engine='python')
+            df.columns = df.columns.str.strip()  # Trim whitespace from column names
+        elif file.name.endswith('.xlsx'):
+            df = pd.read_excel(file)
+            df.columns = df.columns.str.strip()  # Trim whitespace from column names
+        else:
+            st.error("Unsupported file format for Rock Strength Data")
+            return None
+
+        if df.empty:
+            st.error("The uploaded Rock Strength file is empty or not formatted correctly.")
+            return None
+
         return df
     except Exception as e:
         st.error(f"Error reading rock strength data: {e}")
@@ -182,7 +264,6 @@ def preprocess_rock_strength_data(df):
     except Exception as e:
         st.error(f"Error preprocessing rock strength data: {e}")
         return None
-
 
 # Updated function to create comparison chart for machine parameters vs rock strength
 def create_rock_strength_comparison_chart(df, rock_df, rock_type, selected_features):
@@ -246,18 +327,19 @@ def create_rock_strength_comparison_chart(df, rock_df, rock_type, selected_featu
         st.error(f"Error creating rock strength comparison chart: {e}")
         return None
 
-
 def rename_columns(df, working_pressure_col, revolution_col, distance_col, advance_rate_col):
-    column_mapping = {
-        working_pressure_col: 'Working pressure [bar]',
-        revolution_col: 'Revolution [rpm]',
-        distance_col: 'Chainage [mm]',
-        advance_rate_col: 'Advance rate [mm/min]'
-    }
+    column_mapping = {}
+    if working_pressure_col != 'None':
+        column_mapping[working_pressure_col] = 'Working pressure [bar]'
+    if revolution_col != 'None':
+        column_mapping[revolution_col] = 'Revolution [rpm]'
+    if distance_col != 'None':
+        column_mapping[distance_col] = 'Chainage [mm]'
+    if advance_rate_col != 'None':
+        column_mapping[advance_rate_col] = 'Advance rate [mm/min]'
     return df.rename(columns=column_mapping)
 
-
-# Updated function to visualize correlation heatmap with dynamic input
+# Updated function to create correlation heatmap with dynamic input
 def create_correlation_heatmap(df, selected_features):
     if len(selected_features) < 2:
         st.warning("Please select at least two features for the correlation heatmap.")
@@ -278,7 +360,6 @@ def create_correlation_heatmap(df, selected_features):
         st.pyplot(fig)
     except Exception as e:
         st.error(f"Error creating correlation heatmap: {str(e)}")
-
 
 # Updated function to create statistical summary
 def create_statistical_summary(df, selected_features, round_to=2):
@@ -350,7 +431,8 @@ def create_statistical_summary(df, selected_features, round_to=2):
     # Display the styled table
     st.markdown(final_html, unsafe_allow_html=True)
 
-def create_features_vs_time(df, selected_features, time_column):
+# Updated function to create time series plot with dynamic averaging
+def create_features_vs_time(df, selected_features, time_column, aggregation):
     if not selected_features:
         st.warning("Please select at least one feature for the time series plot.")
         return
@@ -376,8 +458,40 @@ def create_features_vs_time(df, selected_features, time_column):
             col=1
         )
 
-        # Update y-axis titles
-        fig.update_yaxes(title_text=feature, row=i, col=1)
+        # Plotting calculated and sensor-based penetration rates if available
+        if feature == 'Penetration Rate [mm/rev]':
+            if 'Calculated Penetration Rate [mm/rev]' in df.columns:
+                fig.add_trace(
+                    go.Scatter(
+                        x=df[time_column],
+                        y=df['Calculated Penetration Rate [mm/rev]'],
+                        mode='lines',
+                        name='Calculated Penetration Rate',
+                        line=dict(color='blue', dash='dash')
+                    ),
+                    row=i,
+                    col=1
+                )
+            if 'Sensor-based Penetration Rate' in df.columns:
+                fig.add_trace(
+                    go.Scatter(
+                        x=df[time_column],
+                        y=df['Sensor-based Penetration Rate'],
+                        mode='lines',
+                        name='Sensor-based Penetration Rate',
+                        line=dict(color='green', dash='dot')
+                    ),
+                    row=i,
+                    col=1
+                )
+
+        # Update y-axis titles with more space
+        fig.update_yaxes(
+            title_text=feature, 
+            row=i, 
+            col=1,
+            title_standoff=40  # Increased standoff to prevent overlap
+        )
 
     # Update layout with larger dimensions and better spacing
     fig.update_layout(
@@ -397,8 +511,7 @@ def create_features_vs_time(df, selected_features, time_column):
 
     st.plotly_chart(fig, use_container_width=True)
 
-
-# Updated function to create Pressure Distribution Over Time Polar Plot with Plotly
+# Updated function to create pressure distribution over time polar plot with Plotly
 def create_pressure_distribution_polar_plot(df, pressure_column, time_column):
     try:
         # Check if the pressure column exists, if not, try to find a similar column
@@ -457,10 +570,7 @@ def create_pressure_distribution_polar_plot(df, pressure_column, time_column):
     except Exception as e:
         st.error(f"Error creating pressure distribution polar plot: {e}")
 
-
-
-
-def create_parameters_vs_chainage(df, selected_features, chainage_column):
+def create_parameters_vs_chainage(df, selected_features, chainage_column, penetration_rates_available):
     if not selected_features:
         st.warning("Please select at least one feature for the chainage plot.")
         return
@@ -503,6 +613,33 @@ def create_parameters_vs_chainage(df, selected_features, chainage_column):
                 row=i,
                 col=1
             )
+            
+            # Plot Penetration Rates if available
+            if 'Penetration Rate [mm/rev]' in selected_features and penetration_rates_available:
+                if 'Calculated Penetration Rate [mm/rev]' in df.columns:
+                    fig.add_trace(
+                        go.Scatter(
+                            x=df[chainage_column],
+                            y=df['Calculated Penetration Rate [mm/rev]'],
+                            mode='lines',
+                            name='Calculated Penetration Rate',
+                            line=dict(color='blue', dash='dash')
+                        ),
+                        row=i,
+                        col=1
+                    )
+                if 'Sensor-based Penetration Rate' in df.columns:
+                    fig.add_trace(
+                        go.Scatter(
+                            x=df[chainage_column],
+                            y=df['Sensor-based Penetration Rate'],
+                            mode='lines',
+                            name='Sensor-based Penetration Rate',
+                            line=dict(color='green', dash='dot')
+                        ),
+                        row=i,
+                        col=1
+                    )
 
             # Update y-axis titles with more space
             fig.update_yaxes(
@@ -535,8 +672,6 @@ def create_parameters_vs_chainage(df, selected_features, chainage_column):
 
     st.plotly_chart(fig, use_container_width=True)
 
-
-
 # Updated function to create multi-axis box plots with additional features
 def create_multi_axis_box_plots(df, selected_features):
     if not selected_features:
@@ -558,7 +693,8 @@ def create_multi_axis_box_plots(df, selected_features):
             height=600,
             width=1000,
             showlegend=True,
-            boxmode='group'
+            boxmode='group',
+            template='plotly_white'
         )
         st.plotly_chart(fig)
     except Exception as e:
@@ -585,89 +721,32 @@ def create_multi_axis_violin_plots(df, selected_features):
             height=600,
             width=1000,
             showlegend=True,
-            violinmode='group'
+            violinmode='group',
+            template='plotly_white'
         )
         st.plotly_chart(fig)
     except Exception as e:
         st.error(f"Error creating violin plots: {e}")
 
-def set_background_color():
-    st.markdown(
-        """
-        <style>
-        .stApp {
-            background-color: rgb(220, 234, 197);
-            color: black;
-        }
-        </style>
-        """,
-        unsafe_allow_html=True
-    )
-
-def add_logo():
+# Enhanced Function to handle chainage filtering and data averaging based on sampling rate
+def handle_chainage_filtering_and_averaging(df, selected_distance, aggregation):
     try:
-        st.sidebar.markdown(
-            """
-            <style>
-            [data-testid="stSidebar"] {
-                background-image: url(https://github.com/kilickursat/AVNanalyzer/raw/main/Herrenknecht_logo.svg);
-                background-repeat: no-repeat;
-                background-size: 120px;
-                background-position: 10px 10px;
-                padding-top: 120px;  /* Reduced padding */
-            }
-            [data-testid="stSidebar"]::before {
-                content: "";
-                margin-bottom: 20px;  /* Reduced margin */
-                display: block;
-            }
-            [data-testid="stSidebar"] > div:first-child {
-                padding-top: 0;  /* Remove additional padding */
-            }
-            .sidebar-content {
-                padding-top: 0;  /* Remove additional padding */
-            }
-            .sidebar-content > * {
-                margin-bottom: 0.5rem !important;
-            }
-            /* Reduce the size of the headers in the sidebar */
-            .sidebar .sidebar-content div[data-testid="stMarkdownContainer"] > h1 {
-                font-size: 1.5em;
-                margin-top: 0;
-            }
-            .sidebar .sidebar-content div[data-testid="stMarkdownContainer"] > h2 {
-                font-size: 1.2em;
-                margin-top: 0;
-            }
-            /* Make the file uploader more compact */
-            .sidebar .sidebar-content [data-testid="stFileUploader"] {
-                margin-bottom: 0.5rem;
-            }
-            /* Adjust radio button spacing */
-            .sidebar .sidebar-content [data-testid="stRadio"] {
-                margin-bottom: 0.5rem;
-            }
-            .sidebar .sidebar-content [data-testid="stRadio"] > div {
-                margin-bottom: 0.2rem;
-            }
-            </style>
-            """,
-            unsafe_allow_html=True,
-        )
-        
+        if selected_distance in df.columns:
+            chainage_min, chainage_max = st.sidebar.slider(
+                "Filter Chainage Range",
+                min_value=float(df[selected_distance].min()),
+                max_value=float(df[selected_distance].max()),
+                value=(float(df[selected_distance].min()), float(df[selected_distance].max()))
+            )
+            df_filtered = df[(df[selected_distance] >= chainage_min) & (df[selected_distance] <= chainage_max)]
+            st.sidebar.write(f"Chainage filtered between {chainage_min} mm and {chainage_max} mm")
+            return df_filtered
+        else:
+            st.sidebar.warning("Selected chainage column not found.")
+            return df
     except Exception as e:
-        st.error(f"Failed to add logo: {e}")
-
-def identify_special_columns(df):
-    working_pressure_keywords = ['working pressure', 'arbeitsdruck', 'pressure', 'druck', 'arbdr', 'sr_arbdr', 'SR_Arbdr']
-    revolution_keywords = ['revolution', 'drehzahl', 'rpm', 'drehz', 'sr_drehz', 'SR_Drehz']
-    advance_rate_keywords = ['advance rate', 'vortrieb', 'vorschub', 'penetration rate', 'VTgeschw_Z','geschw','geschw_Z']
-
-    working_pressure_cols = [col for col in df.columns if any(kw in col.lower() for kw in working_pressure_keywords)]
-    revolution_cols = [col for col in df.columns if any(kw in col.lower() for kw in revolution_keywords)]
-    advance_rate_cols = [col for col in df.columns if any(kw in col.lower() for kw in advance_rate_keywords)]
-
-    return working_pressure_cols, revolution_cols, advance_rate_cols
+        st.sidebar.error(f"Error in chainage filtering and averaging: {e}")
+        return df
 
 # Helper function to suggest column based on keywords
 def suggest_column(df, keywords):
@@ -675,97 +754,6 @@ def suggest_column(df, keywords):
         if any(kw in col.lower() for kw in keywords):
             return col
     return None
-
-def get_time_column(df):
-    time_keywords = ['relativzeit', 'relative time', 'time', 'datum', 'date', 'zeit', 'timestamp', 'Relative Time', 'Relativzeit']
-    for col in df.columns:
-        if any(keyword in col.lower() for keyword in time_keywords):
-            return col
-    return None
-
-
-def create_thrust_force_plots(df, advance_rate_col):
-    try:
-        # Updated column identification with more comprehensive keywords
-        thrust_force_col = next((col for col in df.columns 
-                               if any(kw in col.lower() for kw in [
-                                   'thrust force', 'vorschubkraft', 'kraft', 'kraft_max', 
-                                   'gesamtkraft', 'gesamtkraft_stz', 'gesamtkraft_vtp', 
-                                   'force'])), 
-                              None)
-        
-        if thrust_force_col is None:
-            st.warning("Thrust force column not found in the dataset.")
-            return
-
-        # Create subplots
-        fig = make_subplots(rows=3, cols=1, 
-                           subplot_titles=("Thrust Force vs Penetration Rate", 
-                                         "Thrust Force vs Average Speed", 
-                                         "Thrust Force vs Advance Rate"),
-                           vertical_spacing=0.1)
-
-        # Plot 1: Thrust Force vs Penetration Rate
-        if 'Penetration Rate [mm/rev]' in df.columns:
-            mask = df['Penetration Rate [mm/rev]'].notna()
-            fig.add_trace(go.Scatter(
-                x=df.loc[mask, 'Penetration Rate [mm/rev]'], 
-                y=df.loc[mask, thrust_force_col], 
-                mode='markers', 
-                name='vs Penetration Rate', 
-                marker=dict(color='blue', size=5)
-            ), row=1, col=1)
-        else:
-            st.warning("Penetration Rate [mm/rev] column not found in the dataset.")
-
-        # Plot 2: Thrust Force vs Average Speed
-        if 'Average Speed (mm/min)' in df.columns:
-            mask = df['Average Speed (mm/min)'].notna()
-            fig.add_trace(go.Scatter(
-                x=df.loc[mask, 'Average Speed (mm/min)'], 
-                y=df.loc[mask, thrust_force_col], 
-                mode='markers', 
-                name='vs Average Speed',
-                marker=dict(color='green', size=5)
-            ), row=2, col=1)
-        else:
-            st.warning("Average Speed (mm/min) column not found in the dataset.")
-
-        # Plot 3: Thrust Force vs Selected Advance Rate
-        if advance_rate_col and advance_rate_col in df.columns:
-            mask = df[advance_rate_col].notna()
-            fig.add_trace(go.Scatter(
-                x=df.loc[mask, advance_rate_col], 
-                y=df.loc[mask, thrust_force_col], 
-                mode='markers', 
-                name='vs Advance Rate',
-                marker=dict(color='red', size=5)
-            ), row=3, col=1)
-        else:
-            st.warning("Selected advance rate column not available for plotting.")
-
-        # Update layout with improved styling
-        fig.update_layout(
-            height=1200, 
-            width=800, 
-            title_text="Thrust Force Relationships",
-            showlegend=True,
-            template='plotly_white'
-        )
-        
-        # Update axes labels with proper units
-        fig.update_xaxes(title_text="Penetration Rate [mm/rev]", row=1, col=1)
-        fig.update_xaxes(title_text="Average Speed [mm/min]", row=2, col=1)
-        fig.update_xaxes(title_text=advance_rate_col if advance_rate_col else "Advance Rate [mm/min]", row=3, col=1)
-        
-        for i in range(1, 4):
-            fig.update_yaxes(title_text="Thrust Force [kN]", row=i, col=1)
-
-        st.plotly_chart(fig)
-    except Exception as e:
-        st.error(f"Error creating thrust force plots: {e}")
-
-
 
 def safe_selectbox(label, options, suggested_option):
     try:
@@ -776,51 +764,6 @@ def safe_selectbox(label, options, suggested_option):
     except ValueError:
         index = 0  # Default to 'None' if suggested_option is not in options
     return st.sidebar.selectbox(label, options, index=index)
-
-# Add these functions after the existing helper functions and before the visualization functions
-
-def calculate_advance_rate_and_stats(df, distance_column, time_column):
-    try:
-        df[distance_column] = pd.to_numeric(df[distance_column], errors='coerce')
-        df[time_column] = pd.to_numeric(df[time_column], errors='coerce')
-
-        if len(df) > 1:
-            weg = round(df[distance_column].max() - df[distance_column].min(), 2)
-            zeit = round(df[time_column].max() - df[time_column].min(), 2)
-        else:
-            weg = df[distance_column].iloc[0]
-            zeit = df[time_column].iloc[0]
-
-        zeit = zeit * (0.000001 / 60)
-
-        average_speed = round(weg / zeit, 2) if zeit != 0 else 0
-
-        result = {
-            "Total Distance (mm)": weg,
-            "Total Time (min)": zeit,
-            "Average Speed (mm/min)": average_speed
-        }
-
-        return result, average_speed
-    except Exception as e:
-        st.error(f"Error calculating advance rate stats: {str(e)}")
-        return None, 0
-
-
-def calculate_penetration_rate(row, revolution_col):
-    try:
-        speed = row['Average Speed (mm/min)']
-        revolution = row[revolution_col]
-
-        if pd.isna(speed) or pd.isna(revolution):
-            return np.nan
-        elif revolution == 0:
-            return np.inf if speed != 0 else 0
-        else:
-            return round(speed / revolution, 4)
-    except Exception as e:
-        st.error(f"Error calculating penetration rate: {str(e)}")
-        return np.nan
 
 # Main function
 def main():
@@ -866,11 +809,15 @@ def main():
                     distance_columns = df.columns.tolist()
                 selected_distance = st.sidebar.selectbox("Select distance/chainage column", distance_columns)
 
+                # User inputs for torque calculation
                 n1 = st.sidebar.number_input("Enter n1 value (revolution 1/min)", min_value=0.0, value=1.0, step=0.1)
                 torque_constant = st.sidebar.number_input("Enter torque constant", min_value=0.0, value=1.0, step=0.1)
 
+                # **Enhancement 2: Manual Input for Cutting Rings**
+                cutting_rings = st.sidebar.number_input("Number of Cutting Rings", value=1, min_value=1, step=1)
+
                 if working_pressure_col != 'None' and revolution_col != 'None':
-                    df = calculate_derived_features(df, working_pressure_col, revolution_col, n1, torque_constant, selected_distance)
+                    df = calculate_derived_features(df, working_pressure_col, revolution_col, n1, torque_constant, selected_distance, cutting_rings)
                     
                     if 'Average Speed (mm/min)' in df.columns:
                         df['Penetration Rate [mm/rev]'] = df.apply(
@@ -915,7 +862,7 @@ def main():
                         if rock_strength_data is not None:
                             rock_df = preprocess_rock_strength_data(rock_strength_data)
                             rock_type = st.sidebar.selectbox("Select Rock Type", rock_df.index)
-
+    
                             if rock_df is not None and rock_type and selected_features:
                                 fig = create_rock_strength_comparison_chart(df_viz, rock_df, rock_type, selected_features)
                                 if fig is not None:
@@ -945,7 +892,7 @@ def main():
                         st.warning("Please select features for statistical analysis.")
                 elif selected_option == 'Features vs Time' and time_column:
                     if selected_features:
-                        create_features_vs_time(df_viz, selected_features, time_column)
+                        create_features_vs_time(df_viz, selected_features, time_column, aggregation='auto')
                     else:
                         st.warning("Please select features to visualize over time.")
                 elif selected_option == 'Pressure Distribution' and time_column:
@@ -956,7 +903,45 @@ def main():
                         st.warning("Please select a valid working pressure column.")
                 elif selected_option == 'Parameters vs Chainage':
                     if selected_features:
-                        create_parameters_vs_chainage(df_viz, selected_features, 'Chainage [mm]')
+                        # **Enhancement 1: Chainage Filtering & Data Averaging Based on Sampling Rate**
+                        st.sidebar.header("Chainage Filtering & Data Averaging")
+    
+                        # Detect and parse different time formats
+                        if time_column:
+                            try:
+                                df_viz[time_column] = pd.to_datetime(df_viz[time_column], infer_datetime_format=True, errors='coerce')
+                                df_viz.dropna(subset=[time_column], inplace=True)
+                                df_viz.sort_values(by=time_column, inplace=True)
+        
+                                # Determine sampling rate
+                                df_viz['time_diff'] = df_viz[time_column].diff().dt.total_seconds()
+                                average_sampling_interval = df_viz['time_diff'].median()
+        
+                                st.sidebar.write(f"Detected average sampling interval: {average_sampling_interval} seconds")
+        
+                                # Determine aggregation level
+                                if average_sampling_interval < 1:
+                                    aggregation = 'second'
+                                else:
+                                    aggregation = 'minute'
+        
+                                # User input for aggregation resolution
+                                if aggregation == 'second':
+                                    agg_interval = st.sidebar.selectbox("Select Aggregation Interval", ['1S', '5S', '10S', '30S'])
+                                else:
+                                    agg_interval = st.sidebar.selectbox("Select Aggregation Interval", ['1T', '5T', '10T', '30T'])
+        
+                                # Aggregate data based on selected interval
+                                df_viz = df_viz.resample(agg_interval, on=time_column).mean().reset_index()
+        
+                                st.sidebar.write(f"Data aggregated every {agg_interval}")
+                            except Exception as e:
+                                st.sidebar.error(f"Error parsing time column: {e}")
+        
+                        # Chainage Filtering
+                        df_viz = handle_chainage_filtering_and_averaging(df_viz, selected_distance, aggregation='auto')  # 'auto' can be replaced with actual logic based on aggregation
+        
+                        create_parameters_vs_chainage(df_viz, selected_features, 'Chainage [mm]', penetration_rates_available=('Sensor-based Penetration Rate' in df_viz.columns))
                     else:
                         st.warning("Please select features to visualize against chainage.")
                 elif selected_option == 'Box Plots':
@@ -983,7 +968,7 @@ def main():
 
     st.markdown("---")
     st.markdown("© 2024 Herrenknecht AG. All rights reserved.")
-    st.markdown("Created by Kursat Kilic - Geotechnical Digitalization")
-    
+    st.markdown("**Created by Kursat Kilic - Geotechnical Digitalization**")
+
 if __name__ == "__main__":
     main()
