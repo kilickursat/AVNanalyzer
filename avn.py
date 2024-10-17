@@ -67,11 +67,7 @@ def calculate_penetration_rates(df, revolution_col, advance_rate_col):
         st.error(f"Error in penetration rate calculation: {e}")
         return pd.DataFrame()
 
-# In the main function, when creating plots
-penetration_rates = calculate_penetration_rates(df_viz, revolution_col, advance_rate_col)
-for rate in penetration_rates.columns:
-    if rate not in selected_features:
-        selected_features.append(rate)
+
 
 # Function to calculate torque
 def calculate_torque(working_pressure, torque_constant, current_speed=None, n1=None):
@@ -931,7 +927,8 @@ def main():
 
                     if revolution_col != 'None' and 'Average Speed (mm/min)' in df_viz.columns:
                         penetration_rates = calculate_penetration_rates(df_viz, revolution_col, advance_rate_col)
-                # Add penetration rates to selected_features if not already there
+                        
+                        # Add penetration rates to selected_features if not already there
                         for rate in penetration_rates.columns:
                             if rate not in selected_features:
                                 selected_features.append(rate)
