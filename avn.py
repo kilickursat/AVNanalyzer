@@ -822,20 +822,20 @@ def average_data_by_time(df, time_col, features, interval='1S'):
     df[time_col] = pd.to_datetime(df[time_col])
     return df.set_index(time_col).resample(interval)[features].mean().reset_index()
 
-# In the main function, add UI elements for chainage filtering
-st.sidebar.subheader("Chainage Filtering")
-chainage_start = st.sidebar.number_input("Start Chainage (m)", min_value=0.0, step=0.1)
-chainage_end = st.sidebar.number_input("End Chainage (m)", min_value=chainage_start, step=0.1)
-st.sidebar.subheader("Machine Parameters")
-cutting_rings = st.sidebar.number_input("Number of Cutting Rings", min_value=1, value=1, step=1)
-
-# Modify the thrust force calculation in the relevant functions
-df_viz['Thrust Force per Ring [kN]'] = df_viz['Thrust Force [kN]'] / cutting_rings
-
-# Apply filtering when creating plots
-if selected_option == 'Parameters vs Chainage':
-    filtered_df = filter_chainage(df_viz, chainage_start * 1000, chainage_end * 1000)
-    create_parameters_vs_chainage(filtered_df, selected_features, 'Chainage [mm]')
+    # In the main function, add UI elements for chainage filtering
+    st.sidebar.subheader("Chainage Filtering")
+    chainage_start = st.sidebar.number_input("Start Chainage (m)", min_value=0.0, step=0.1)
+    chainage_end = st.sidebar.number_input("End Chainage (m)", min_value=chainage_start, step=0.1)
+    st.sidebar.subheader("Machine Parameters")
+    cutting_rings = st.sidebar.number_input("Number of Cutting Rings", min_value=1, value=1, step=1)
+    
+    # Modify the thrust force calculation in the relevant functions
+    df_viz['Thrust Force per Ring [kN]'] = df_viz['Thrust Force [kN]'] / cutting_rings
+    
+    # Apply filtering when creating plots
+    if selected_option == 'Parameters vs Chainage':
+        filtered_df = filter_chainage(df_viz, chainage_start * 1000, chainage_end * 1000)
+        create_parameters_vs_chainage(filtered_df, selected_features, 'Chainage [mm]')
 
 # For Features vs Time, add sampling rate detection and averaging
 def detect_sampling_rate(df, time_col):
