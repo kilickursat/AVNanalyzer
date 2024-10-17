@@ -815,8 +815,9 @@ def calculate_advance_rate_and_stats(df, distance_column, time_column):
 
 
 
-def filter_chainage(df, start, end, chainage_col='Chainage [mm]'):
-    return df[(df[chainage_col] >= start) & (df[chainage_col] <= end)]
+def filter_chainage(df, start, end, chainage_col):
+    df[chainage_col] = pd.to_numeric(df[chainage_col], errors='coerce')
+    return df[(df[chainage_col] >= start) & (df[chainage_col] <= end)].dropna(subset=[chainage_col])
 
 def average_data_by_time(df, time_col, features, interval='1S'):
     df[time_col] = pd.to_datetime(df[time_col])
@@ -904,6 +905,7 @@ def main():
                 if not distance_columns:
                     distance_columns = df.columns.tolist()
                 selected_distance = st.sidebar.selectbox("Select distance/chainage column", distance_columns)
+                df[selected_distance] = pd.to_numeric(df[selected_distance], errors='coerce')
 
                 n1 = st.sidebar.number_input("Enter n1 value (revolution 1/min)", min_value=0.0, value=1.0, step=0.1)
                 torque_constant = st.sidebar.number_input("Enter torque constant", min_value=0.0, value=1.0, step=0.1)
