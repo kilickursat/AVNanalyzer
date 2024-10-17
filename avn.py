@@ -873,7 +873,7 @@ def main():
         st.sidebar.header("Data Upload & Analysis")
 
         uploaded_file = st.sidebar.file_uploader("Machine Data (CSV/Excel)", type=['csv', 'xlsx'])
-        rock_strength_file = st.sidebar.file_uploader("Rock Strength Data (CSV/Excel)", type=['csv', 'xlsx'])
+        rock_strength_file = st.sidebar.file_uploader("Rock Strength Data (CSV/Excel)", type=['xlsx'])
 
         if uploaded_file is not None:
             df = load_data(uploaded_file)
@@ -883,10 +883,6 @@ def main():
                 st.write("Columns:", df.columns.tolist())
 
                 working_pressure_cols, revolution_cols, advance_rate_cols = identify_special_columns(df)
-
-                st.write("Identified working pressure columns:", working_pressure_cols)
-                st.write("Identified revolution columns:", revolution_cols)
-                st.write("Identified advance rate columns:", advance_rate_cols)
 
                 suggested_working_pressure = suggest_column(df, ['working pressure', 'arbeitsdruck', 'pressure', 'druck', 'arbdr', 'sr_arbdr','SR_Arbdr'])
                 suggested_revolution = suggest_column(df, ['revolution', 'drehzahl', 'rpm', 'drehz', 'sr_drehz', 'SR_Drehz'])
@@ -913,39 +909,22 @@ def main():
                     distance_columns = df.columns.tolist()
                 selected_distance = st.sidebar.selectbox("Select distance/chainage column", distance_columns)
 
-                # Convert selected distance column to numeric
-                if selected_distance in df.columns:
-                    df[selected_distance] = pd.to_numeric(df[selected_distance], errors='coerce')
-                    st.write(f"Converted {selected_distance} to numeric. Sample values:", df[selected_distance].head())
-                else:
-                    st.error(f"Selected distance column '{selected_distance}' not found in the dataframe.")
-
                 n1 = st.sidebar.number_input("Enter n1 value (revolution 1/min)", min_value=0.0, value=1.0, step=0.1)
                 torque_constant = st.sidebar.number_input("Enter torque constant", min_value=0.0, value=1.0, step=0.1)
 
-                st.sidebar.subheader("Chainage Filtering")
-                chainage_start = st.sidebar.number_input("Start Chainage (m)", min_value=0.0, step=0.1)
-                chainage_end = st.sidebar.number_input("End Chainage (m)", min_value=chainage_start, step=0.1)
-                st.sidebar.subheader("Machine Parameters")
-                cutting_rings = st.sidebar.number_input("Number of Cutting Rings", min_value=1, value=1, step=1)
-
-                df_viz = df.copy()
-
                 if working_pressure_col != 'None' and revolution_col != 'None':
                     df = calculate_derived_features(df, working_pressure_col, revolution_col, n1, torque_constant, selected_distance)
-                    df_viz = rename_columns(df.copy(), working_pressure_col, revolution_col, selected_distance, advance_rate_col)
+                    
+                    if 'Average Speed (mm/min)' in df.columns:
+                        df['Penetration Rate [mm/rev]'] = df.apply(
+                            lambda row: calculate_penetration_rate(row, revolution_col), axis=1
+                        )
 
-                    if 'Thrust Force [kN]' in df_viz.columns:
-                        df_viz['Thrust Force per Ring [kN]'] = df_viz['Thrust Force [kN]'] / cutting_rings
+                df_viz = rename_columns(df.copy(), working_pressure_col, revolution_col, selected_distance, advance_rate_col)
 
-                    if revolution_col != 'None' and 'Average Speed (mm/min)' in df_viz.columns:
-                        penetration_rates = calculate_penetration_rates(df_viz, revolution_col, advance_rate_col)
-                    else:
-                        st.warning("Unable to calculate penetration rates. Make sure revolution column and average speed are available.")
-                        penetration_rates = pd.DataFrame()
-                
                 all_features = df_viz.columns.tolist()
                 st.write("All features available for analysis:", all_features)
+
                 time_column = get_time_column(df_viz)
 
                 options = ['Statistical Summary', 'Parameters vs Chainage', 'Box Plots', 'Violin Plots', 'Thrust Force Plots', 'Correlation Heatmap']
