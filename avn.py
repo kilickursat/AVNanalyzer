@@ -52,11 +52,20 @@ def calculate_advance_rate_and_stats(df, distance_column, time_column):
 
 # Penetration rate calculation function
 def calculate_penetration_rates(df, revolution_col, advance_rate_col):
-    df['Calculated Penetration Rate [mm/rev]'] = df['Average Speed (mm/min)'] / df[revolution_col]
-    if 'Sensor Penetration Rate' in df.columns:
-        return df[['Calculated Penetration Rate [mm/rev]', 'Sensor Penetration Rate']]
-    else:
-        return df[['Calculated Penetration Rate [mm/rev]']]
+    try:
+        if 'Average Speed (mm/min)' not in df.columns:
+            st.warning("Average Speed column not found. Skipping penetration rate calculation.")
+            return pd.DataFrame()
+
+        df['Calculated Penetration Rate [mm/rev]'] = df['Average Speed (mm/min)'] / df[revolution_col]
+        
+        if 'Sensor Penetration Rate' in df.columns:
+            return df[['Calculated Penetration Rate [mm/rev]', 'Sensor Penetration Rate']]
+        else:
+            return df[['Calculated Penetration Rate [mm/rev]']]
+    except Exception as e:
+        st.error(f"Error in penetration rate calculation: {e}")
+        return pd.DataFrame()
 
 # In the main function, when creating plots
 penetration_rates = calculate_penetration_rates(df_viz, revolution_col, advance_rate_col)
@@ -809,20 +818,6 @@ def calculate_advance_rate_and_stats(df, distance_column, time_column):
         return None, 0
 
 
-def calculate_penetration_rate(row, revolution_col):
-    try:
-        speed = row['Average Speed (mm/min)']
-        revolution = row[revolution_col]
-
-        if pd.isna(speed) or pd.isna(revolution):
-            return np.nan
-        elif revolution == 0:
-            return np.inf if speed != 0 else 0
-        else:
-            return round(speed / revolution, 4)
-    except Exception as e:
-        st.error(f"Error calculating penetration rate: {str(e)}")
-        return np.nan
 
 def filter_chainage(df, start, end, chainage_col='Chainage [mm]'):
     return df[(df[chainage_col] >= start) & (df[chainage_col] <= end)]
@@ -932,12 +927,18 @@ def main():
                 if working_pressure_col != 'None' and revolution_col != 'None':
                     df = calculate_derived_features(df, working_pressure_col, revolution_col, n1, torque_constant, selected_distance)
                     
-                    if 'Average Speed (mm/min)' in df.columns:
-                        df['Penetration Rate [mm/rev]'] = df.apply(
-                            lambda row: calculate_penetration_rate(row, revolution_col), axis=1
-                        )
+                    df_viz = rename_columns(df.copy(), working_pressure_col, revolution_col, selected_distance, advance_rate_col)
 
-                df_viz = rename_columns(df.copy(), working_pressure_col, revolution_col, selected_distance, advance_rate_col)
+                    if revolution_col != 'None' and 'Average Speed (mm/min)' in df_viz.columns:
+                        penetration_rates = calculate_penetration_rates(df_viz, revolution_col, advance_rate_col)
+                # Add penetration rates to selected_features if not already there
+                        for rate in penetration_rates.columns:
+                            if rate not in selected_features:
+                                selected_features.append(rate)
+                    else:
+                        st.warning("Unable to calculate penetration rates. Make sure revolution column and average speed are available.")
+                        penetration_rates = pd.DataFrame()
+                
 
                 all_features = df_viz.columns.tolist()
                 
