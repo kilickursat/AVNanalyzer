@@ -177,7 +177,7 @@ def calculate_derived_features(df, working_pressure_col, revolution_col, n1, tor
                 df['Average Speed (mm/min)'] = average_speed
             
             if revolution_col is not None:
-                df['Penetration Rate [mm/rev]'] = df.apply(lambda row: calculate_penetration_rate(row, revolution_col), axis=1
+                df['Penetration Rate [mm/rev]'] = df.apply(lambda row: calculate_penetration_rate(row, revolution_col), axis=1)
         
         return df
             
