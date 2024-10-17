@@ -846,13 +846,7 @@ def detect_sampling_rate(df, time_col):
     else:
         return 'seconds'
 
-if selected_option == 'Features vs Time' and time_column:
-    sampling_rate = detect_sampling_rate(df_viz, time_column)
-    if sampling_rate == 'milliseconds':
-        averaged_df = average_data_by_time(df_viz, time_column, selected_features, '1S')
-    else:
-        averaged_df = average_data_by_time(df_viz, time_column, selected_features, '1T')
-    create_features_vs_time(averaged_df, selected_features, time_column)
+
 
 def normalize_time_column(df, time_column):
     try:
