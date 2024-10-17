@@ -863,9 +863,7 @@ def normalize_time_column(df, time_column):
         st.error(f"Error normalizing time column: {e}")
         return df
 
-# In the main function, after loading the data
-if time_column:
-    df_viz = normalize_time_column(df_viz, time_column)
+
 
 # Main function
 def main():
