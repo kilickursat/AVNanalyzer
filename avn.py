@@ -908,35 +908,28 @@ def main():
                 n1 = st.sidebar.number_input("Enter n1 value (revolution 1/min)", min_value=0.0, value=1.0, step=0.1)
                 torque_constant = st.sidebar.number_input("Enter torque constant", min_value=0.0, value=1.0, step=0.1)
 
-                # New UI elements for chainage filtering and cutting rings
                 st.sidebar.subheader("Chainage Filtering")
                 chainage_start = st.sidebar.number_input("Start Chainage (m)", min_value=0.0, step=0.1)
                 chainage_end = st.sidebar.number_input("End Chainage (m)", min_value=chainage_start, step=0.1)
                 st.sidebar.subheader("Machine Parameters")
                 cutting_rings = st.sidebar.number_input("Number of Cutting Rings", min_value=1, value=1, step=1)
 
+                df_viz = df.copy()  # Initialize df_viz with the original dataframe
+
                 if working_pressure_col != 'None' and revolution_col != 'None':
                     df = calculate_derived_features(df, working_pressure_col, revolution_col, n1, torque_constant, selected_distance)
-                    
                     df_viz = rename_columns(df.copy(), working_pressure_col, revolution_col, selected_distance, advance_rate_col)
 
-                    # Modify thrust force calculation
                     if 'Thrust Force [kN]' in df_viz.columns:
                         df_viz['Thrust Force per Ring [kN]'] = df_viz['Thrust Force [kN]'] / cutting_rings
 
                     if revolution_col != 'None' and 'Average Speed (mm/min)' in df_viz.columns:
                         penetration_rates = calculate_penetration_rates(df_viz, revolution_col, advance_rate_col)
-                        
-                        # Add penetration rates to selected_features if not already there
-                        for rate in penetration_rates.columns:
-                            if rate not in selected_features:
-                                selected_features.append(rate)
                     else:
                         st.warning("Unable to calculate penetration rates. Make sure revolution column and average speed are available.")
                         penetration_rates = pd.DataFrame()
                 
                 all_features = df_viz.columns.tolist()
-                
                 time_column = get_time_column(df_viz)
 
                 options = ['Statistical Summary', 'Parameters vs Chainage', 'Box Plots', 'Violin Plots', 'Thrust Force Plots', 'Correlation Heatmap']
@@ -948,14 +941,7 @@ def main():
                 selected_option = st.sidebar.radio("Choose visualization", options)
 
                 if selected_option not in ['Pressure Distribution', 'Thrust Force Plots']:
-                    default_features = []
-                    if 'Calculated torque [kNm]' in all_features:
-                        default_features.append('Calculated torque [kNm]')
-                    if 'Average Speed (mm/min)' in all_features:
-                        default_features.append('Average Speed (mm/min)')
-                    if 'Penetration Rate [mm/rev]' in all_features:
-                        default_features.append('Penetration Rate [mm/rev]')
-                    
+                    default_features = [col for col in ['Calculated torque [kNm]', 'Average Speed (mm/min)', 'Penetration Rate [mm/rev]'] if col in all_features]
                     selected_features = st.sidebar.multiselect(
                         "Select features for analysis",
                         all_features,
@@ -964,11 +950,9 @@ def main():
 
                 st.subheader(f"Visualization: {selected_option}")
 
-                # Apply chainage filtering to df_viz
                 df_viz_filtered = filter_chainage(df_viz, chainage_start * 1000, chainage_end * 1000, 'Chainage [mm]')
 
                 if selected_option == 'Rock Strength Comparison':
-                    rock_df = None
                     if rock_strength_file:
                         rock_strength_data = read_rock_strength_data(rock_strength_file)
                         if rock_strength_data is not None:
@@ -976,7 +960,7 @@ def main():
                             rock_type = st.sidebar.selectbox("Select Rock Type", rock_df.index)
 
                             if rock_df is not None and rock_type and selected_features:
-                                fig = create_rock_strength_comparison_chart(df_viz, rock_df, rock_type, selected_features)
+                                fig = create_rock_strength_comparison_chart(df_viz_filtered, rock_df, rock_type, selected_features)
                                 if fig is not None:
                                     st.plotly_chart(fig)
                             else:
@@ -1037,6 +1021,9 @@ def main():
 
             else:
                 st.error("Error loading the data. Please check your file format.")
+        else:
+            st.info("Please upload a file to begin analysis.")
+
     except Exception as e:
         st.error(f"An unexpected error occurred in the main function: {str(e)}")
 
