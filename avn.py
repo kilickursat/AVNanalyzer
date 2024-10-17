@@ -51,23 +51,21 @@ def calculate_advance_rate_and_stats(df, distance_column, time_column):
         return None, 0
 
 # Penetration rate calculation function
-def calculate_penetration_rates(df, revolution_col, advance_rate_col):
+def calculate_penetration_rate(row):
     try:
-        if 'Average Speed (mm/min)' not in df.columns:
-            st.warning("Average Speed column not found. Skipping penetration rate calculation.")
-            return pd.DataFrame()
-
-        df['Calculated Penetration Rate [mm/rev]'] = df['Average Speed (mm/min)'] / df[revolution_col]
+        speed = row['Average Speed (mm/min)']
+        revolution = row['Revolution [rpm]']
         
-        if 'Sensor Penetration Rate' in df.columns:
-            return df[['Calculated Penetration Rate [mm/rev]', 'Sensor Penetration Rate']]
+        if pd.isna(speed) or pd.isna(revolution):
+            return np.nan
+        elif revolution == 0:
+            return np.inf if speed != 0 else 0
         else:
-            return df[['Calculated Penetration Rate [mm/rev]']]
+            return round(speed / revolution, 4)
+            
     except Exception as e:
         st.error(f"Error in penetration rate calculation: {e}")
-        return pd.DataFrame()
-
-
+        return np.nan
 
 # Function to calculate torque
 def calculate_torque(working_pressure, torque_constant, current_speed=None, n1=None):
@@ -149,24 +147,19 @@ def get_time_column(df):
 def load_data(file):
     try:
         if file.name.endswith('.csv'):
-            # Try different encodings and delimiters
-            encodings = ['utf-8', 'iso-8859-1', 'cp1252']
-            delimiters = [',', ';', '\t']
-            for encoding in encodings:
-                for delimiter in delimiters:
-                    try:
-                        df = pd.read_csv(file, encoding=encoding, sep=delimiter)
-                        if len(df.columns) > 1:
-                            return df
-                    except:
-                        pass
-            st.error("Unable to read CSV file. Please check the file format.")
-            return None
+            df = pd.read_csv(file, sep=';', decimal=',', na_values=['', 'NA', 'N/A', 'nan', 'NaN'], keep_default_na=True)
         elif file.name.endswith('.xlsx'):
-            return pd.read_excel(file)
+            df = pd.read_excel(file)
         else:
             st.error("Unsupported file format")
             return None
+
+        if df.empty:
+            st.error("The uploaded file is empty or not formatted correctly.")
+            return None
+
+        return df
+        
     except Exception as e:
         st.error(f"Error loading data: {e}")
         return None
@@ -814,53 +807,20 @@ def calculate_advance_rate_and_stats(df, distance_column, time_column):
         return None, 0
 
 
-
-def filter_chainage(df, start, end, chainage_col):
-    df[chainage_col] = pd.to_numeric(df[chainage_col], errors='coerce')
-    return df[(df[chainage_col] >= start) & (df[chainage_col] <= end)].dropna(subset=[chainage_col])
-
-def average_data_by_time(df, time_col, features, interval='1S'):
-    df[time_col] = pd.to_datetime(df[time_col])
-    return df.set_index(time_col).resample(interval)[features].mean().reset_index()
-
-    # In the main function, add UI elements for chainage filtering
-    st.sidebar.subheader("Chainage Filtering")
-    chainage_start = st.sidebar.number_input("Start Chainage (m)", min_value=0.0, step=0.1)
-    chainage_end = st.sidebar.number_input("End Chainage (m)", min_value=chainage_start, step=0.1)
-    st.sidebar.subheader("Machine Parameters")
-    cutting_rings = st.sidebar.number_input("Number of Cutting Rings", min_value=1, value=1, step=1)
-    
-    # Modify the thrust force calculation in the relevant functions
-    df_viz['Thrust Force per Ring [kN]'] = df_viz['Thrust Force [kN]'] / cutting_rings
-    
-
-# For Features vs Time, add sampling rate detection and averaging
-def detect_sampling_rate(df, time_col):
-    df[time_col] = pd.to_datetime(df[time_col])
-    time_diff = df[time_col].diff().median()
-    if time_diff.total_seconds() < 1:
-        return 'milliseconds'
-    else:
-        return 'seconds'
-
-
-
-def normalize_time_column(df, time_column):
+def calculate_penetration_rate(row, revolution_col):
     try:
-        df[time_column] = pd.to_datetime(df[time_column], infer_datetime_format=True)
-        time_diff = df[time_column].diff().median()
-        if time_diff.total_seconds() < 1:
-            df[time_column] = df[time_column].dt.floor('S')
-        elif time_diff.total_seconds() < 60:
-            df[time_column] = df[time_column].dt.floor('T')
+        speed = row['Average Speed (mm/min)']
+        revolution = row[revolution_col]
+
+        if pd.isna(speed) or pd.isna(revolution):
+            return np.nan
+        elif revolution == 0:
+            return np.inf if speed != 0 else 0
         else:
-            df[time_column] = df[time_column].dt.floor('H')
-        return df
+            return round(speed / revolution, 4)
     except Exception as e:
-        st.error(f"Error normalizing time column: {e}")
-        return df
-
-
+        st.error(f"Error calculating penetration rate: {str(e)}")
+        return np.nan
 
 # Main function
 def main():
@@ -873,15 +833,12 @@ def main():
         st.sidebar.header("Data Upload & Analysis")
 
         uploaded_file = st.sidebar.file_uploader("Machine Data (CSV/Excel)", type=['csv', 'xlsx'])
-        rock_strength_file = st.sidebar.file_uploader("Rock Strength Data (CSV/Excel)", type=['xlsx'])
+        rock_strength_file = st.sidebar.file_uploader("Rock Strength Data (CSV/Excel)", type=['csv', 'xlsx'])
 
         if uploaded_file is not None:
             df = load_data(uploaded_file)
 
             if df is not None:
-                st.write("Data loaded successfully. Shape:", df.shape)
-                st.write("Columns:", df.columns.tolist())
-
                 working_pressure_cols, revolution_cols, advance_rate_cols = identify_special_columns(df)
 
                 suggested_working_pressure = suggest_column(df, ['working pressure', 'arbeitsdruck', 'pressure', 'druck', 'arbdr', 'sr_arbdr','SR_Arbdr'])
@@ -923,8 +880,7 @@ def main():
                 df_viz = rename_columns(df.copy(), working_pressure_col, revolution_col, selected_distance, advance_rate_col)
 
                 all_features = df_viz.columns.tolist()
-                st.write("All features available for analysis:", all_features)
-
+                
                 time_column = get_time_column(df_viz)
 
                 options = ['Statistical Summary', 'Parameters vs Chainage', 'Box Plots', 'Violin Plots', 'Thrust Force Plots', 'Correlation Heatmap']
@@ -936,7 +892,14 @@ def main():
                 selected_option = st.sidebar.radio("Choose visualization", options)
 
                 if selected_option not in ['Pressure Distribution', 'Thrust Force Plots']:
-                    default_features = [col for col in ['Calculated torque [kNm]', 'Average Speed (mm/min)', 'Penetration Rate [mm/rev]'] if col in all_features]
+                    default_features = []
+                    if 'Calculated torque [kNm]' in all_features:
+                        default_features.append('Calculated torque [kNm]')
+                    if 'Average Speed (mm/min)' in all_features:
+                        default_features.append('Average Speed (mm/min)')
+                    if 'Penetration Rate [mm/rev]' in all_features:
+                        default_features.append('Penetration Rate [mm/rev]')
+                    
                     selected_features = st.sidebar.multiselect(
                         "Select features for analysis",
                         all_features,
@@ -945,15 +908,8 @@ def main():
 
                 st.subheader(f"Visualization: {selected_option}")
 
-                # Use the selected_distance column for filtering and visualization
-                if selected_distance not in df_viz.columns:
-                    st.error(f"Selected distance column '{selected_distance}' not found in the dataset. Please check your data and column selection.")
-                    return
-
-                # Apply chainage filtering to df_viz
-                df_viz_filtered = filter_chainage(df_viz, chainage_start * 1000, chainage_end * 1000, selected_distance)
-
                 if selected_option == 'Rock Strength Comparison':
+                    rock_df = None
                     if rock_strength_file:
                         rock_strength_data = read_rock_strength_data(rock_strength_file)
                         if rock_strength_data is not None:
@@ -961,7 +917,7 @@ def main():
                             rock_type = st.sidebar.selectbox("Select Rock Type", rock_df.index)
 
                             if rock_df is not None and rock_type and selected_features:
-                                fig = create_rock_strength_comparison_chart(df_viz_filtered, rock_df, rock_type, selected_features)
+                                fig = create_rock_strength_comparison_chart(df_viz, rock_df, rock_type, selected_features)
                                 if fig is not None:
                                     st.plotly_chart(fig)
                             else:
@@ -973,61 +929,57 @@ def main():
                 
                 elif selected_option == 'Thrust Force Plots':
                     create_thrust_force_plots(
-                        df_viz_filtered, 
+                        df_viz, 
                         'Advance rate [mm/min]' if advance_rate_col != 'None' else None
                     )
                 
                 elif selected_option == 'Correlation Heatmap':
                     if selected_features and len(selected_features) > 1:
-                        create_correlation_heatmap(df_viz_filtered, selected_features)
+                        create_correlation_heatmap(df_viz, selected_features)
                     else:
                         st.warning("Please select at least two features for correlation analysis.")
                 elif selected_option == 'Statistical Summary':
                     if selected_features:
-                        create_statistical_summary(df_viz_filtered, selected_features)
+                        create_statistical_summary(df_viz, selected_features)
                     else:
                         st.warning("Please select features for statistical analysis.")
                 elif selected_option == 'Features vs Time' and time_column:
                     if selected_features:
-                        create_features_vs_time(df_viz_filtered, selected_features, time_column)
+                        create_features_vs_time(df_viz, selected_features, time_column)
                     else:
                         st.warning("Please select features to visualize over time.")
                 elif selected_option == 'Pressure Distribution' and time_column:
                     if working_pressure_col and working_pressure_col != 'None':
                         renamed_pressure_col = 'Working pressure [bar]'
-                        create_pressure_distribution_polar_plot(df_viz_filtered, renamed_pressure_col, time_column)
+                        create_pressure_distribution_polar_plot(df_viz, renamed_pressure_col, time_column)
                     else:
                         st.warning("Please select a valid working pressure column.")
                 elif selected_option == 'Parameters vs Chainage':
                     if selected_features:
-                        create_parameters_vs_chainage(df_viz_filtered, selected_features, selected_distance)
+                        create_parameters_vs_chainage(df_viz, selected_features, 'Chainage [mm]')
                     else:
                         st.warning("Please select features to visualize against chainage.")
                 elif selected_option == 'Box Plots':
                     if selected_features:
-                        create_multi_axis_box_plots(df_viz_filtered, selected_features)
+                        create_multi_axis_box_plots(df_viz, selected_features)
                     else:
                         st.warning("Please select features for box plot analysis.")
                 elif selected_option == 'Violin Plots':
                     if selected_features:
-                        create_multi_axis_violin_plots(df_viz_filtered, selected_features)
+                        create_multi_axis_violin_plots(df_viz, selected_features)
                     else:
                         st.warning("Please select features for violin plot analysis.")
 
                 if st.sidebar.button("Download Processed Data"):
-                    csv = df_viz_filtered.to_csv(index=False)
+                    csv = df_viz.to_csv(index=False)
                     b64 = base64.b64encode(csv.encode()).decode()
                     href = f'<a href="data:file/csv;base64,{b64}" download="processed_data.csv">Download Processed CSV File</a>'
                     st.sidebar.markdown(href, unsafe_allow_html=True)
 
             else:
                 st.error("Error loading the data. Please check your file format.")
-        else:
-            st.info("Please upload a file to begin analysis.")
-
     except Exception as e:
         st.error(f"An unexpected error occurred in the main function: {str(e)}")
-        st.error("Please check your data and selected columns.")
 
     st.markdown("---")
     st.markdown("© 2024 Herrenknecht AG. All rights reserved.")
