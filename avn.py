@@ -950,7 +950,13 @@ def main():
 
                 st.subheader(f"Visualization: {selected_option}")
 
-                df_viz_filtered = filter_chainage(df_viz, chainage_start * 1000, chainage_end * 1000, 'Chainage [mm]')
+                # Use the selected_distance column for filtering and visualization
+                if selected_distance not in df_viz.columns:
+                    st.error(f"Selected distance column '{selected_distance}' not found in the dataset. Please check your data and column selection.")
+                    return
+
+                # Apply chainage filtering to df_viz
+                df_viz_filtered = filter_chainage(df_viz, chainage_start * 1000, chainage_end * 1000, selected_distance)
 
                 if selected_option == 'Rock Strength Comparison':
                     if rock_strength_file:
