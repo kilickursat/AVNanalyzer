@@ -920,10 +920,21 @@ def main():
                 n1 = st.sidebar.number_input("Enter n1 value (revolution 1/min)", min_value=0.0, value=1.0, step=0.1)
                 torque_constant = st.sidebar.number_input("Enter torque constant", min_value=0.0, value=1.0, step=0.1)
 
+                # New UI elements for chainage filtering and cutting rings
+                st.sidebar.subheader("Chainage Filtering")
+                chainage_start = st.sidebar.number_input("Start Chainage (m)", min_value=0.0, step=0.1)
+                chainage_end = st.sidebar.number_input("End Chainage (m)", min_value=chainage_start, step=0.1)
+                st.sidebar.subheader("Machine Parameters")
+                cutting_rings = st.sidebar.number_input("Number of Cutting Rings", min_value=1, value=1, step=1)
+
                 if working_pressure_col != 'None' and revolution_col != 'None':
                     df = calculate_derived_features(df, working_pressure_col, revolution_col, n1, torque_constant, selected_distance)
                     
                     df_viz = rename_columns(df.copy(), working_pressure_col, revolution_col, selected_distance, advance_rate_col)
+
+                    # Modify thrust force calculation
+                    if 'Thrust Force [kN]' in df_viz.columns:
+                        df_viz['Thrust Force per Ring [kN]'] = df_viz['Thrust Force [kN]'] / cutting_rings
 
                     if revolution_col != 'None' and 'Average Speed (mm/min)' in df_viz.columns:
                         penetration_rates = calculate_penetration_rates(df_viz, revolution_col, advance_rate_col)
@@ -936,7 +947,6 @@ def main():
                         st.warning("Unable to calculate penetration rates. Make sure revolution column and average speed are available.")
                         penetration_rates = pd.DataFrame()
                 
-
                 all_features = df_viz.columns.tolist()
                 
                 time_column = get_time_column(df_viz)
@@ -966,6 +976,9 @@ def main():
 
                 st.subheader(f"Visualization: {selected_option}")
 
+                # Apply chainage filtering to df_viz
+                df_viz_filtered = filter_chainage(df_viz, chainage_start * 1000, chainage_end * 1000, 'Chainage [mm]')
+
                 if selected_option == 'Rock Strength Comparison':
                     rock_df = None
                     if rock_strength_file:
@@ -987,49 +1000,49 @@ def main():
                 
                 elif selected_option == 'Thrust Force Plots':
                     create_thrust_force_plots(
-                        df_viz, 
+                        df_viz_filtered, 
                         'Advance rate [mm/min]' if advance_rate_col != 'None' else None
                     )
                 
                 elif selected_option == 'Correlation Heatmap':
                     if selected_features and len(selected_features) > 1:
-                        create_correlation_heatmap(df_viz, selected_features)
+                        create_correlation_heatmap(df_viz_filtered, selected_features)
                     else:
                         st.warning("Please select at least two features for correlation analysis.")
                 elif selected_option == 'Statistical Summary':
                     if selected_features:
-                        create_statistical_summary(df_viz, selected_features)
+                        create_statistical_summary(df_viz_filtered, selected_features)
                     else:
                         st.warning("Please select features for statistical analysis.")
                 elif selected_option == 'Features vs Time' and time_column:
                     if selected_features:
-                        create_features_vs_time(df_viz, selected_features, time_column)
+                        create_features_vs_time(df_viz_filtered, selected_features, time_column)
                     else:
                         st.warning("Please select features to visualize over time.")
                 elif selected_option == 'Pressure Distribution' and time_column:
                     if working_pressure_col and working_pressure_col != 'None':
                         renamed_pressure_col = 'Working pressure [bar]'
-                        create_pressure_distribution_polar_plot(df_viz, renamed_pressure_col, time_column)
+                        create_pressure_distribution_polar_plot(df_viz_filtered, renamed_pressure_col, time_column)
                     else:
                         st.warning("Please select a valid working pressure column.")
                 elif selected_option == 'Parameters vs Chainage':
                     if selected_features:
-                        create_parameters_vs_chainage(df_viz, selected_features, 'Chainage [mm]')
+                        create_parameters_vs_chainage(df_viz_filtered, selected_features, 'Chainage [mm]')
                     else:
                         st.warning("Please select features to visualize against chainage.")
                 elif selected_option == 'Box Plots':
                     if selected_features:
-                        create_multi_axis_box_plots(df_viz, selected_features)
+                        create_multi_axis_box_plots(df_viz_filtered, selected_features)
                     else:
                         st.warning("Please select features for box plot analysis.")
                 elif selected_option == 'Violin Plots':
                     if selected_features:
-                        create_multi_axis_violin_plots(df_viz, selected_features)
+                        create_multi_axis_violin_plots(df_viz_filtered, selected_features)
                     else:
                         st.warning("Please select features for violin plot analysis.")
 
                 if st.sidebar.button("Download Processed Data"):
-                    csv = df_viz.to_csv(index=False)
+                    csv = df_viz_filtered.to_csv(index=False)
                     b64 = base64.b64encode(csv.encode()).decode()
                     href = f'<a href="data:file/csv;base64,{b64}" download="processed_data.csv">Download Processed CSV File</a>'
                     st.sidebar.markdown(href, unsafe_allow_html=True)
