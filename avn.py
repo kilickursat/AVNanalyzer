@@ -824,12 +824,18 @@ def main():
         st.sidebar.header("Data Upload & Analysis")
 
         # File upload
-        uploaded_file = st.sidebar.file_uploader("Machine Data (CSV/Excel)", type=['csv', 'xlsx'])
+        uploaded_file = st.sidebar.file_uploader("Machine Data (CSV/Excel)", type=['csv', 'xlsx'], key='file_uploader_1')
         if uploaded_file is not None:
             if uploaded_file.name.endswith('.csv'):
+                try:
                 df = pd.read_csv(uploaded_file)
+            except pd.errors.ParserError as e:
+                st.error(f"Error reading CSV file: {e}")
             elif uploaded_file.name.endswith('.xlsx'):
+                try:
                 df = pd.read_excel(uploaded_file)
+            except ValueError as e:
+                st.error(f"Error reading Excel file: {e}")
             st.write("Data preview:", df.head())
 
             # 1. Filtering Data based on Chainage
@@ -913,6 +919,3 @@ def main():
 if __name__ == "__main__":
     main()
 
-
-if __name__ == "__main__":
-    main()
