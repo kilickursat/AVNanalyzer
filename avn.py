@@ -715,8 +715,8 @@ def handle_chainage_filtering_and_averaging(df, chainage_column, aggregation):
                 bins = np.linspace(filtered_df[chainage_column].min(), filtered_df[chainage_column].max(), num=10)
             filtered_df['chainage_bin'] = pd.cut(filtered_df[chainage_column], bins=bins, include_lowest=True)
 
-            # Perform aggregation
-            aggregated_df = filtered_df.groupby('chainage_bin').agg('mean').reset_index()
+            # Perform aggregation, ensuring only numeric columns are aggregated
+            aggregated_df = filtered_df.groupby('chainage_bin').mean(numeric_only=True).reset_index()
             aggregated_df[chainage_column] = aggregated_df['chainage_bin'].apply(lambda x: x.mid if pd.notnull(x.mid) else x)
 
             return aggregated_df
@@ -994,7 +994,7 @@ def main():
                                     resample_rule = f"{aggregation.rstrip('T')}T"
                                 else:
                                     resample_rule = '1S'  # Default
-                                aggregated_df = df_viz.resample(resample_rule).mean().reset_index()
+                                aggregated_df = df_viz.resample(resample_rule).mean(numeric_only=True).reset_index()
                             st.sidebar.write(f"Data aggregated every {aggregation}")
                         else:
                             st.sidebar.warning("Unknown aggregation interval. Skipping aggregation.")
@@ -1050,7 +1050,7 @@ def main():
                     st.sidebar.markdown(href, unsafe_allow_html=True)
 
             else:
-                st.error("Error loading the data. Please check your file format.")
+                st.error("Please upload a machine data file to proceed.")
     except Exception as e:
         st.error(f"An unexpected error occurred in the main function: {str(e)}")
 
