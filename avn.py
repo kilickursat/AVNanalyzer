@@ -164,7 +164,7 @@ def calculate_derived_features(df, working_pressure_col, revolution_col, n1, tor
 
             df['Calculated torque [kNm]'] = df.apply(calculate_torque_wrapper, axis=1)
         
-        # Calculate advance rate and average speed
+        # Calculate average speed and penetration rate if possible
         distance_column = selected_distance
         time_column = get_time_column(df)
         
@@ -187,7 +187,7 @@ def calculate_derived_features(df, working_pressure_col, revolution_col, n1, tor
 # Function to add sensor-based penetration rate
 def add_sensor_based_penetration(df, sensor_penetration_col):
     if sensor_penetration_col in df.columns:
-        df['Sensor-based Penetration Rate [mm/rev]'] = df[sensor_penetration_col]
+        df['Sensor-based Penetration Rate [mm/rev]'] = pd.to_numeric(df[sensor_penetration_col], errors='coerce')
     else:
         st.warning("Sensor-based penetration rate column not found.")
     return df
@@ -362,10 +362,10 @@ def create_thrust_force_plots(df, advance_rate_col, num_cutting_rings):
                            vertical_spacing=0.1)
 
         # Plot 1: Thrust Force vs Calculated Penetration Rate
-        if 'Penetration Rate [mm/rev]' in df.columns:
-            mask = df['Penetration Rate [mm/rev]'].notna()
+        if 'Calculated Penetration Rate [mm/rev]' in df.columns:
+            mask = df['Calculated Penetration Rate [mm/rev]'].notna()
             fig.add_trace(go.Scatter(
-                x=df.loc[mask, 'Penetration Rate [mm/rev]'], 
+                x=df.loc[mask, 'Calculated Penetration Rate [mm/rev]'], 
                 y=df.loc[mask, 'Thrust Force per Ring'], 
                 mode='markers', 
                 name='vs Calculated Penetration Rate', 
@@ -421,6 +421,171 @@ def create_thrust_force_plots(df, advance_rate_col, num_cutting_rings):
     except Exception as e:
         st.error(f"Error creating thrust force plots: {e}")
 
+# Function to create statistical summary
+def create_statistical_summary(df, selected_features, round_to=2):
+    if not selected_features:
+        st.warning("Please select at least one feature for the statistical summary.")
+        return
+
+    try:
+        numeric_df = df[selected_features].select_dtypes(include=[np.number])
+        if numeric_df.empty:
+            st.warning("No numeric features selected for statistical summary.")
+            return
+
+        summary = numeric_df.describe().transpose().round(round_to)
+
+        # Adding skewness and kurtosis
+        summary['skewness'] = numeric_df.skew().round(round_to)
+        summary['kurtosis'] = numeric_df.kurtosis().round(round_to)
+
+        st.dataframe(summary)
+    except Exception as e:
+        st.error(f"Error creating statistical summary: {e}")
+
+# Function to create polar plot
+def create_pressure_distribution_polar_plot(df, pressure_column, time_column):
+    try:
+        # Check if the pressure column exists
+        if pressure_column not in df.columns:
+            st.warning(f"Pressure column '{pressure_column}' not found in the dataset.")
+            return
+
+        df[pressure_column] = pd.to_numeric(df[pressure_column], errors='coerce')
+
+        # Normalize time to angles
+        df['Time_Angle'] = (df[time_column] - df[time_column].min()) / (df[time_column].max() - df[time_column].min()) * 360
+
+        fig = go.Figure()
+
+        fig.add_trace(go.Scatterpolar(
+            r=df[pressure_column],
+            theta=df['Time_Angle'],
+            mode='markers',
+            marker=dict(color='blue', size=5),
+            name='Pressure'
+        ))
+
+        fig.update_layout(
+            title='Pressure Distribution Over Time (Polar Plot)',
+            polar=dict(
+                radialaxis=dict(
+                    visible=True,
+                    range=[df[pressure_column].min(), df[pressure_column].max()]
+                )
+            ),
+            showlegend=False,
+            template='plotly_white'
+        )
+
+        st.plotly_chart(fig)
+    except Exception as e:
+        st.error(f"Error creating polar plot: {e}")
+
+# Function to read and process rock strength data
+def read_rock_strength_data(file):
+    try:
+        if file.name.endswith('.csv'):
+            df = pd.read_csv(file, sep=';', decimal=',', na_values=['', 'NA', 'N/A', 'nan', 'NaN'], keep_default_na=True, engine='python')
+            df.columns = df.columns.str.strip()
+        elif file.name.endswith('.xlsx'):
+            df = pd.read_excel(file)
+            df.columns = df.columns.str.strip()
+        else:
+            st.error("Unsupported rock strength file format")
+            return None
+
+        if df.empty:
+            st.error("The uploaded rock strength file is empty or not formatted correctly.")
+            return None
+
+        df.columns = [col.strip() for col in df.columns]
+        return df
+    except Exception as e:
+        st.error(f"Error reading rock strength data: {e}")
+        return None
+
+# Function to preprocess rock strength data
+def preprocess_rock_strength_data(df):
+    try:
+        if 'Probenbezeichnung' not in df.columns or 'Test' not in df.columns or 'Value' not in df.columns:
+            st.error("Rock strength data must contain 'Probenbezeichnung', 'Test', and 'Value' columns.")
+            return None
+
+        df['Rock Type'] = df['Probenbezeichnung'].str.split().str[0]
+        pivoted = df.pivot_table(values='Value', index='Rock Type', columns='Test', aggfunc='mean')
+        pivoted.rename(columns={'UCS': 'UCS (MPa)', 'BTS': 'BTS (MPa)', 'PLT': 'PLT (MPa)'}, inplace=True)
+        return pivoted
+    except Exception as e:
+        st.error(f"Error preprocessing rock strength data: {e}")
+        return None
+# Function to create rock strength comparison chart
+def create_rock_strength_comparison_chart(df, rock_df, rock_type, selected_features):
+    try:
+        # Prepare data for plotting
+        rock_strength_data = rock_df.loc[rock_type].dropna()
+        machine_data = df[selected_features].mean()
+
+        # Ensure both series have the same parameters
+        common_params = rock_strength_data.index.intersection(machine_data.index)
+        if common_params.empty:
+            st.warning("No common parameters found between rock strength data and machine data.")
+            return
+
+        rock_strength_common = rock_strength_data[common_params]
+        machine_data_common = machine_data[common_params]
+
+        # Create the bar chart
+        fig = go.Figure()
+
+        # Add bars for rock strength parameters
+        fig.add_trace(go.Bar(
+            x=rock_strength_common.index,
+            y=rock_strength_common.values,
+            name='Rock Strength',
+            marker_color='#FF6B6B'
+        ))
+
+        # Add bars for machine parameters
+        fig.add_trace(go.Bar(
+            x=machine_data_common.index,
+            y=machine_data_common.values,
+            name='Machine Parameters',
+            marker_color='#4ECDC4'
+        ))
+
+        # Update layout
+        fig.update_layout(
+            title=f'Rock Strength ({rock_type}) vs Machine Parameters Comparison',
+            xaxis_title="Parameters",
+            yaxis_title="Values",
+            barmode='group',
+            height=600,
+            width=1000,
+            showlegend=True,
+            template='plotly_white',
+            legend=dict(
+                yanchor="top",
+                y=0.99,
+                xanchor="right",
+                x=0.99,
+                bgcolor="rgba(255, 255, 255, 0.8)",
+                bordercolor="rgba(0, 0, 0, 0.3)",
+                borderwidth=1
+            )
+        )
+
+        # Improve hover information
+        fig.update_traces(
+            hovertemplate="<b>%{x}</b><br>" +
+                         "Value: %{y:.2f}<br>" +
+                         "<extra></extra>"
+        )
+
+        st.plotly_chart(fig)
+    except Exception as e:
+        st.error(f"Error creating rock strength comparison chart: {e}")
+
 # Main function
 def main():
     try:
@@ -432,6 +597,7 @@ def main():
         st.sidebar.header("Data Upload & Analysis")
 
         uploaded_file = st.sidebar.file_uploader("Machine Data (CSV/Excel)", type=['csv', 'xlsx'])
+        rock_strength_file = st.sidebar.file_uploader("Rock Strength Data (CSV/Excel)", type=['csv', 'xlsx'])
 
         if uploaded_file is not None:
             df = load_data(uploaded_file)
@@ -473,8 +639,13 @@ def main():
 
                 # User input for data sampling rate and averaging interval
                 st.sidebar.header("Data Sampling & Averaging")
-                data_sampling_rate = st.sidebar.selectbox("Select Original Data Sampling Rate", ['Millisecond', '10 Milliseconds'])
-                averaging_interval = st.sidebar.selectbox("Select Averaging Interval", ['1S', '5S', '10S', '30S'])
+                data_sampling_rate = st.sidebar.selectbox("Select Original Data Sampling Rate", ['Millisecond', '10 Milliseconds', 'Second'])
+                if data_sampling_rate == 'Millisecond' or data_sampling_rate == '10 Milliseconds':
+                    averaging_interval = st.sidebar.selectbox("Select Averaging Interval", ['1S'])  # Averaging to seconds
+                elif data_sampling_rate == 'Second':
+                    averaging_interval = st.sidebar.selectbox("Select Averaging Interval", ['1T', '5T', '10T', '30T'])  # Averaging to minutes
+                else:
+                    averaging_interval = '1S'  # Default
 
                 if working_pressure_col != 'None' and revolution_col != 'None':
                     df = calculate_derived_features(df, working_pressure_col, revolution_col, n1, torque_constant, selected_distance)
@@ -489,7 +660,7 @@ def main():
                 
                 time_column = get_time_column(df_viz)
 
-                options = ['Parameters vs Chainage', 'Features vs Time', 'Thrust Force Plots']
+                options = ['Parameters vs Chainage', 'Features vs Time', 'Thrust Force Plots', 'Statistical Summary', 'Pressure Distribution', 'Rock Strength Comparison']
                 selected_option = st.sidebar.radio("Choose visualization", options)
 
                 default_features = []
@@ -510,30 +681,57 @@ def main():
 
                 st.subheader(f"Visualization: {selected_option}")
 
+                # Apply averaging based on sampling rate
+                if time_column:
+                    df_viz = average_data(df_viz, time_column, averaging_interval)
+                else:
+                    st.warning("Time column not detected. Some visualizations may not function correctly.")
+
                 if selected_option == 'Parameters vs Chainage':
                     if selected_features:
-                        # Average data over specified time intervals
-                        df_viz = average_data(df_viz, time_column, averaging_interval)
                         create_parameters_vs_chainage(df_viz, selected_features, 'Chainage [mm]')
                     else:
                         st.warning("Please select features to visualize against chainage.")
 
                 elif selected_option == 'Features vs Time':
-                    if selected_features:
-                        # Average data over specified time intervals
-                        df_viz = average_data(df_viz, time_column, averaging_interval)
+                    if selected_features and time_column:
                         create_features_vs_time(df_viz, selected_features, time_column)
                     else:
-                        st.warning("Please select features to visualize over time.")
+                        st.warning("Please select features and ensure a valid time column for visualization.")
 
                 elif selected_option == 'Thrust Force Plots':
-                    # Average data over specified time intervals
-                    df_viz = average_data(df_viz, time_column, averaging_interval)
                     create_thrust_force_plots(
                         df_viz, 
                         'Advance rate [mm/min]' if advance_rate_col != 'None' else None,
                         num_cutting_rings
                     )
+
+                elif selected_option == 'Statistical Summary':
+                    if selected_features:
+                        create_statistical_summary(df_viz, selected_features)
+                    else:
+                        st.warning("Please select features for statistical summary.")
+
+                elif selected_option == 'Pressure Distribution':
+                    if working_pressure_col != 'None' and time_column is not None:
+                        create_pressure_distribution_polar_plot(df_viz, 'Working pressure [bar]', time_column)
+                    else:
+                        st.warning("Please ensure both working pressure and time columns are selected.")
+
+                elif selected_option == 'Rock Strength Comparison':
+                    if rock_strength_file is not None:
+                        rock_strength_data = read_rock_strength_data(rock_strength_file)
+                        if rock_strength_data is not None:
+                            rock_df = preprocess_rock_strength_data(rock_strength_data)
+                            if rock_df is not None:
+                                rock_type = st.sidebar.selectbox("Select Rock Type", rock_df.index)
+                                create_rock_strength_comparison_chart(df_viz, rock_df, rock_type, selected_features)
+                            else:
+                                st.warning("Error processing rock strength data.")
+                        else:
+                            st.warning("Error loading rock strength data.")
+                    else:
+                        st.warning("Please upload rock strength data to use this feature.")
 
                 if st.sidebar.button("Download Processed Data"):
                     csv = df_viz.to_csv(index=False)
