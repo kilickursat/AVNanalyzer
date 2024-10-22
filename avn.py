@@ -45,7 +45,14 @@ def load_data(file):
         return None
 
     return df
-
+# Function to aggregate data to per-second level
+def aggregate_data(df, sampling_rate):
+    if sampling_rate == 'millisecond' or sampling_rate == '10 millisecond':
+        df['Relative time'] = pd.to_datetime(df['Relative time'], unit='ms')
+        df.set_index('Relative time', inplace=True)
+        df = df.resample('1S').mean().reset_index()
+    return df
+    
 def read_rock_strength_data(file):
     try:
         df = pd.read_excel(file)
@@ -218,6 +225,7 @@ def create_features_vs_time(df):
 
     fig.update_layout(height=300 * len(features), width=1000, title_text='Features vs Time')
     st.plotly_chart(fig)
+
 
 # Function to create Pressure Distribution Over Time Polar Plot with Plotly (using scatter plots)
 def create_pressure_distribution_polar_plot(df):
@@ -412,9 +420,6 @@ def add_logo():
     )
 # Streamlit app
 def main():
-    set_background_color()
-    add_logo()
-
     st.title("Herrenknecht Hard Rock Data Analysis App")
 
     # Sidebar for file upload and visualization selection
@@ -427,25 +432,35 @@ def main():
         df = load_data(uploaded_file)
 
         if df is not None:
-            # Preprocess and clean the data
-            if uploaded_file.name.endswith('.csv'):
-                # Assuming specific column names as per the provided code
-                df = df.rename(columns={
-                    df.columns[13]: 'Arbeitsdruck',
-                    df.columns[7]: 'Drehzahl',
-                    df.columns[30]: 'Advance rate (mm/min)',
-                    df.columns[17]: 'Thrust force [kN]',
-                    df.columns[27]: 'Chainage',
-                    df.columns[2]: 'Relative time',
-                    df.columns[28]: 'Weg VTP [mm]',
-                    'AzV.V13_SR_Pos_Grad | DB    60.DBD   236': 'SR Position [Grad]',
-                    'AzV.V13_SR_ArbDr_Z | DB    60.DBD    26': 'Working pressure [bar]',
-                    'AzV.V13_SR_Drehz_nach_Abgl_Z | DB    60.DBD    30': 'Revolution [rpm]'
-                })
+            # Allow user to select sampling rate for aggregation
+            sampling_rate = st.sidebar.selectbox("Select Raw Data Sampling Rate", ['millisecond', '10 millisecond', 'second', 'minute'])
+            
+            # Aggregate data if required
+            if sampling_rate in ['millisecond', '10 millisecond']:
+                df = aggregate_data(df, sampling_rate)
 
-                numeric_columns = ['Working pressure [bar]', 'Revolution [rpm]', 'Thrust force [kN]', 'Chainage', 'Advance rate (mm/min)', 'Weg VTP [mm]']
-                for col in numeric_columns:
-                    df = clean_numeric_column(df, col)
+            # Allow user to select column mappings
+            st.sidebar.subheader("Column Selection")
+            relative_time_col = st.sidebar.selectbox("Select Relative Time Column", df.columns)
+            working_pressure_col = st.sidebar.selectbox("Select Working Pressure Column", df.columns)
+            revolution_col = st.sidebar.selectbox("Select Revolution Column", df.columns)
+            thrust_force_col = st.sidebar.selectbox("Select Thrust Force Column", df.columns)
+            advance_rate_col = st.sidebar.selectbox("Select Advance Rate Column", df.columns)
+            chainage_col = st.sidebar.selectbox("Select Chainage Column", df.columns)
+
+            # Rename columns based on user selection
+            df = df.rename(columns={
+                relative_time_col: 'Relative time',
+                working_pressure_col: 'Working pressure [bar]',
+                revolution_col: 'Revolution [rpm]',
+                thrust_force_col: 'Thrust force [kN]',
+                advance_rate_col: 'Advance rate (mm/min)',
+                chainage_col: 'Chainage'
+            })
+
+            numeric_columns = ['Working pressure [bar]', 'Revolution [rpm]', 'Thrust force [kN]', 'Chainage', 'Advance rate (mm/min)']
+            for col in numeric_columns:
+                df = clean_numeric_column(df, col)
 
             # Calculate additional parameters
             df['Calculated torque [kNm]'] = df['Working pressure [bar]'] * 0.1 * 3.14159 / 20
@@ -453,47 +468,49 @@ def main():
 
             # Visualization selection
             options = st.sidebar.radio("Choose visualization", [
-                'Correlation Heatmap', 'Statistical Summary', 
-                'Features vs Time', 'Pressure Distribution',
-                'Parameters vs Chainage', 'Box Plots', 
-                'Violin Plots', 'Rock Strength Comparison'
+                'Features vs Time', 'Correlation Heatmap', 'Statistical Summary'
             ])
 
-            # Rock strength data processing
-            rock_df = None
-            if rock_strength_file:
-                rock_strength_data = read_rock_strength_data(rock_strength_file)
-                if rock_strength_data is not None:
-                    rock_df = preprocess_rock_strength_data(rock_strength_data)
-                    rock_type = st.sidebar.selectbox("Select Rock Type", rock_df.index)
-
             # Visualization based on user selection
-            if options == 'Correlation Heatmap':
-                create_correlation_heatmap(df)
-            elif options == 'Statistical Summary':
-                create_statistical_summary(df)
-            elif options == 'Features vs Time':
+            if options == 'Features vs Time':
                 create_features_vs_time(df)
-            elif options == 'Pressure Distribution':
-                create_pressure_distribution_polar_plot(df)
-            elif options == 'Parameters vs Chainage':
-                create_parameters_vs_chainage(df)
-            elif options == 'Box Plots':
-                create_multi_axis_box_plots(df)
-            elif options == 'Violin Plots':
-                create_multi_axis_violin_plots(df)
-            elif options == 'Rock Strength Comparison':
-                if rock_df is not None and 'rock_type' in locals():
-                    create_rock_strength_comparison_chart(df, rock_df, rock_type)
+            elif options == 'Correlation Heatmap':
+                features = st.multiselect("Select features for correlation heatmap", df.columns, default=[
+                    'Revolution [rpm]', 'Thrust force [kN]', 'Chainage', 'Calculated torque [kNm]', 'Penetration_Rate', 'Working pressure [bar]'
+                ])
+                if len(features) < 2:
+                    st.warning("Please select at least two features.")
                 else:
-                    st.warning("Please upload rock strength data and select a rock type to view the comparison.")
+                    corr_matrix = df[features].corr()
+                    fig = sns.heatmap(corr_matrix, annot=True, cmap='coolwarm', vmin=-1, vmax=1, center=0)
+                    fig.figure.set_size_inches(12, 10)
+                    fig.set_title('Correlation Heatmap of Selected Parameters')
+                    st.pyplot(fig.figure)
+            elif options == 'Statistical Summary':
+                features = st.multiselect("Select features for statistical summary", df.columns, default=[
+                    'Revolution [rpm]', 'Penetration_Rate', 'Calculated torque [kNm]', 'Thrust force [kN]'
+                ])
+                if not features:
+                    st.warning("Please select at least one feature.")
+                else:
+                    summary_dict = {}
+                    for feature in features:
+                        summary_dict[feature] = {
+                            'count': int(df[feature].count()),
+                            'mean': round(df[feature].mean(), 2),
+                            'median': round(df[feature].median(), 2),
+                            'std': round(df[feature].std(), 2),
+                            'min': round(df[feature].min(), 2),
+                            '25%': round(df[feature].quantile(0.25), 2),
+                            '50%': round(df[feature].quantile(0.50), 2),
+                            '75%': round(df[feature].quantile(0.75), 2),
+                            'max': round(df[feature].max(), 2),
+                            'skewness': round(df[feature].skew(), 2),
+                            'kurtosis': round(df[feature].kurtosis(), 2)
+                        }
 
-            # Add an option to download the processed data
-            if st.sidebar.button("Download Processed Data"):
-                csv = df.to_csv(index=False)
-                b64 = base64.b64encode(csv.encode()).decode()
-                href = f'<a href="data:file/csv;base64,{b64}" download="processed_data.csv">Download Processed CSV File</a>'
-                st.sidebar.markdown(href, unsafe_allow_html=True)
+                    summary = pd.DataFrame(summary_dict).transpose()
+                    st.dataframe(summary)
 
     else:
         st.info("Please upload a machine data file to begin analysis.")
@@ -505,3 +522,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
