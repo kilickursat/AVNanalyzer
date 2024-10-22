@@ -814,7 +814,6 @@ def safe_selectbox(label, options, suggested_option):
     return st.sidebar.selectbox(label, options, index=index)
 
 
-
 def main():
     try:
         set_background_color()
@@ -840,6 +839,15 @@ def main():
                     st.error(f"Error reading Excel file: {e}")
                     return
             st.write("Data preview:", df.head())
+
+            # Sensor Selection
+            st.sidebar.header("Sensor Selection")
+            sensor_cols = [col for col in df.columns if "sensor" in col.lower()]
+            selected_sensors = st.sidebar.multiselect("Select Sensors to Analyze", sensor_cols, default=sensor_cols)
+            if not selected_sensors:
+                st.warning("Please select at least one sensor to proceed with the analysis.")
+                return
+            df = df[selected_sensors + [col for col in df.columns if col not in sensor_cols]]  # Keep selected sensors and other relevant columns
 
             # 1. Filtering Data based on Chainage
             st.sidebar.header("Data Filtering Options")
