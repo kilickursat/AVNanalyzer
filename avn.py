@@ -90,10 +90,6 @@ def clean_numeric_column(df, column_name):
     df[column_name] = df[column_name].fillna(df[column_name].median())
     return df
 
-# Advanced rate calculation function (Removed as per fix, handled differently)
-
-# Penetration rate calculation function (Removed as per fix, handled differently)
-
 # Function to calculate torque
 def calculate_torque(working_pressure, torque_constant, current_speed=None, n1=None):
     if current_speed is None or n1 is None:
@@ -105,10 +101,11 @@ def calculate_torque(working_pressure, torque_constant, current_speed=None, n1=N
             torque = (n1 / current_speed) * torque_constant * working_pressure
     return torque
 
-# Function to calculate derived features (Modified as per fix)
-def calculate_derived_features(df, working_pressure_col, revolution_col, n1, torque_constant, selected_distance, time_col):
+# Function to calculate derived features (Updated as per user instructions)
+def calculate_derived_features(df, working_pressure_col, revolution_col, n1, torque_constant, selected_distance, time_col, advance_rate_col):
     try:
-        if working_pressure_col is not None and revolution_col is not None and revolution_col != 'None':
+        if working_pressure_col and revolution_col and revolution_col != 'None':
+            # Ensure numeric
             df[working_pressure_col] = pd.to_numeric(df[working_pressure_col], errors='coerce')
             df[revolution_col] = pd.to_numeric(df[revolution_col], errors='coerce')
 
@@ -128,16 +125,31 @@ def calculate_derived_features(df, working_pressure_col, revolution_col, n1, tor
 
             df['Calculated torque [kNm]'] = df.apply(calculate_torque_wrapper, axis=1)
         
-        # Compute per-row Average Speed and Penetration Rate
+        # Compute overall Average Speed and Penetration Rate
         if time_col and selected_distance and pd.api.types.is_numeric_dtype(df[selected_distance]) and pd.api.types.is_numeric_dtype(df[time_col]):
-            df = df.sort_values(by=time_col)
-            df['Delta Distance'] = df[selected_distance].diff()
-            df['Delta Time'] = df[time_col].diff()
-            # Avoid division by zero
-            df['Average Speed (mm/min)'] = df.apply(lambda row: (row['Delta Distance'] / row['Delta Time']) * 60 if row['Delta Time'] > 0 else 0, axis=1)
-            df['Average Speed (mm/min)'] = df['Average Speed (mm/min)'].fillna(0)
-            if revolution_col in df.columns and df[revolution_col].dtype in [int, float]:
-                df['Penetration Rate [mm/rev]'] = df.apply(lambda row: row['Average Speed (mm/min)'] / row[revolution_col] if row[revolution_col] != 0 else np.nan, axis=1)
+            weg = round(df[selected_distance].max() - df[selected_distance].min(), 2)
+            zeit = round(df[time_col].max() - df[time_col].min(), 2)
+            zeit = zeit * (0.000001 / 60)  # Assuming time is in microseconds; adjust the scaling factor as needed
+
+            average_speed = round(weg / zeit, 2) if zeit != 0 else 0
+
+            # Calculate mean advance rate
+            if advance_rate_col and advance_rate_col != 'None' and pd.api.types.is_numeric_dtype(df[advance_rate_col]):
+                mean_advance_rate = round(df[advance_rate_col].mean(), 2)
+            else:
+                mean_advance_rate = 0
+
+            # Calculate mean revolution
+            if revolution_col and revolution_col != 'None' and pd.api.types.is_numeric_dtype(df[revolution_col]):
+                mean_revolution = round(df[revolution_col].mean(), 2)
+            else:
+                mean_revolution = 1  # Avoid division by zero
+
+            penetration_rate = round(mean_advance_rate / mean_revolution, 2) if mean_revolution != 0 else np.nan
+
+            # Add these as constant columns to the DataFrame
+            df['Average Speed (mm/min)'] = average_speed
+            df['Penetration Rate [mm/rev]'] = penetration_rate
         else:
             st.warning("Cannot compute Average Speed and Penetration Rate due to missing or non-numeric distance or time columns.")
 
@@ -201,7 +213,7 @@ def load_data(file):
         df.columns = [col.strip() for col in df.columns]
 
         return df
-        
+            
     except Exception as e:
         st.error(f"Error loading data: {e}")
         return None
@@ -461,7 +473,12 @@ def create_pressure_distribution_polar_plot(df, pressure_column, time_column):
         df[pressure_column] = pd.to_numeric(df[pressure_column], errors='coerce')
 
         # Normalize time to 360 degrees
-        df['normalized_time'] = (df[time_column] - df[time_column].min()) / (df[time_column].max() - df[time_column].min()) * 360
+        if pd.api.types.is_numeric_dtype(df[time_column]):
+            df['normalized_time'] = (df[time_column] - df[time_column].min()) / (df[time_column].max() - df[time_column].min()) * 360
+        else:
+            # If time is datetime, convert to seconds and then normalize
+            df['normalized_time'] = (df[time_column] - df[time_column].min()).dt.total_seconds()
+            df['normalized_time'] = (df['normalized_time'] / df['normalized_time'].max()) * 360
 
         fig = go.Figure()
         fig.add_trace(go.Scatterpolar(
@@ -661,7 +678,8 @@ def handle_chainage_filtering_and_averaging(df, chainage_column, aggregation):
         # User input for chainage range
         min_chainage = float(df[chainage_column].min())
         max_chainage = float(df[chainage_column].max())
-        chainage_range = st.sidebar.slider("Select Chainage Range (mm)", min_chainage, max_chainage, (min_chainage, max_chainage), step=(max_chainage - min_chainage)/100)
+        step = (max_chainage - min_chainage) / 100 if (max_chainage - min_chainage) > 0 else 1
+        chainage_range = st.sidebar.slider("Select Chainage Range (mm)", min_chainage, max_chainage, (min_chainage, max_chainage), step=step)
 
         # Filter the DataFrame based on selected range
         filtered_df = df[(df[chainage_column] >= chainage_range[0]) & (df[chainage_column] <= chainage_range[1])]
@@ -670,12 +688,9 @@ def handle_chainage_filtering_and_averaging(df, chainage_column, aggregation):
 
         # Aggregate data based on aggregation interval
         if aggregation in ['1S', '5S', '10S', '30S']:
-            # Assuming chainage increases with time, sort by chainage
-            filtered_df = filtered_df.sort_values(by=chainage_column)
-            # Resample based on chainage by grouping
-            # Since chainage isn't datetime, binning is necessary
-            step = int(aggregation.rstrip('S')) if aggregation.endswith('S') else int(aggregation.rstrip('T')) * 60  # Example step
-            bins = np.arange(filtered_df[chainage_column].min(), filtered_df[chainage_column].max(), step=step)
+            # For chainage, binning is based on the aggregation step
+            step_size = int(aggregation.rstrip('S'))
+            bins = np.arange(filtered_df[chainage_column].min(), filtered_df[chainage_column].max(), step=step_size)
             if len(bins) == 0:
                 bins = np.linspace(filtered_df[chainage_column].min(), filtered_df[chainage_column].max(), num=10)
             filtered_df['chainage_bin'] = pd.cut(filtered_df[chainage_column], bins=bins, include_lowest=True)
@@ -683,16 +698,17 @@ def handle_chainage_filtering_and_averaging(df, chainage_column, aggregation):
             aggregated_df[chainage_column] = aggregated_df['chainage_bin'].apply(lambda x: x.mid if pd.notnull(x.mid) else x)
             return aggregated_df
         elif aggregation in ['1T', '5T', '10T', '30T']:
-            # For chainage, binning is similar
-            filtered_df = filtered_df.sort_values(by=chainage_column)
-            step = int(aggregation.rstrip('T')) * 50  # Example step of 50 mm per T
-            bins = np.arange(filtered_df[chainage_column].min(), filtered_df[chainage_column].max(), step=step)
+            # For chainage, binning is similar with different step sizes
+            step_size = int(aggregation.rstrip('T')) * 50  # Example step of 50 mm per T
+            bins = np.arange(filtered_df[chainage_column].min(), filtered_df[chainage_column].max(), step=step_size)
             if len(bins) == 0:
                 bins = np.linspace(filtered_df[chainage_column].min(), filtered_df[chainage_column].max(), num=10)
             filtered_df['chainage_bin'] = pd.cut(filtered_df[chainage_column], bins=bins, include_lowest=True)
             aggregated_df = filtered_df.groupby('chainage_bin').mean().reset_index()
             aggregated_df[chainage_column] = aggregated_df['chainage_bin'].apply(lambda x: x.mid if pd.notnull(x.mid) else x)
             return aggregated_df
+        elif aggregation == 'None':
+            return filtered_df
         else:
             st.warning("Unknown aggregation interval. Skipping aggregation.")
             return filtered_df
@@ -715,6 +731,10 @@ def create_thrust_force_plots(df, advance_rate_col):
             st.warning("Thrust force column not found in the dataset.")
             return
 
+        # Check if Average Speed and Penetration Rate are present
+        has_average_speed = 'Average Speed (mm/min)' in df.columns
+        has_penetration_rate = 'Penetration Rate [mm/rev]' in df.columns
+
         # Create subplots
         fig = make_subplots(rows=3, cols=1, 
                            subplot_titles=("Thrust Force vs Penetration Rate", 
@@ -723,38 +743,41 @@ def create_thrust_force_plots(df, advance_rate_col):
                            vertical_spacing=0.1)
 
         # Plot 1: Thrust Force vs Penetration Rate
-        if 'Penetration Rate [mm/rev]' in df.columns:
-            mask = df['Penetration Rate [mm/rev]'].notna()
-            fig.add_trace(go.Scatter(
-                x=df.loc[mask, 'Penetration Rate [mm/rev]'], 
-                y=df.loc[mask, thrust_force_col], 
-                mode='markers', 
-                name='Penetration Rate', 
-                marker=dict(color='blue', size=5)
-            ), row=1, col=1)
+        if has_penetration_rate:
+            unique_penetration_rates = df['Penetration Rate [mm/rev]'].unique()
+            for pr in unique_penetration_rates:
+                subset = df[df['Penetration Rate [mm/rev]'] == pr]
+                fig.add_trace(go.Scatter(
+                    x=[pr]*len(subset),
+                    y=subset[thrust_force_col],
+                    mode='markers',
+                    name=f'Penetration Rate: {pr} mm/rev',
+                    marker=dict(color='blue', size=5)
+                ), row=1, col=1)
         else:
             st.warning("Penetration Rate [mm/rev] column not found in the dataset.")
 
         # Plot 2: Thrust Force vs Average Speed
-        if 'Average Speed (mm/min)' in df.columns:
-            mask = df['Average Speed (mm/min)'].notna()
-            fig.add_trace(go.Scatter(
-                x=df.loc[mask, 'Average Speed (mm/min)'], 
-                y=df.loc[mask, thrust_force_col], 
-                mode='markers', 
-                name='Average Speed',
-                marker=dict(color='green', size=5)
-            ), row=2, col=1)
+        if has_average_speed:
+            unique_average_speeds = df['Average Speed (mm/min)'].unique()
+            for speed in unique_average_speeds:
+                subset = df[df['Average Speed (mm/min)'] == speed]
+                fig.add_trace(go.Scatter(
+                    x=[speed]*len(subset),
+                    y=subset[thrust_force_col],
+                    mode='markers',
+                    name=f'Average Speed: {speed} mm/min',
+                    marker=dict(color='green', size=5)
+                ), row=2, col=1)
         else:
             st.warning("Average Speed (mm/min) column not found in the dataset.")
 
         # Plot 3: Thrust Force vs Selected Advance Rate
         if advance_rate_col and advance_rate_col in df.columns:
-            mask = df[advance_rate_col].notna()
             fig.add_trace(go.Scatter(
-                x=df.loc[mask, advance_rate_col], 
-                y=df.loc[mask, thrust_force_col], 
-                mode='markers', 
+                x=df[advance_rate_col],
+                y=df[thrust_force_col],
+                mode='markers',
                 name='Advance Rate',
                 marker=dict(color='red', size=5)
             ), row=3, col=1)
@@ -842,7 +865,7 @@ def main():
                 time_column = get_time_column(df)
 
                 if working_pressure_col != 'None' and revolution_col != 'None' and time_column:
-                    df = calculate_derived_features(df, working_pressure_col, revolution_col, n1, torque_constant, selected_distance, time_column)
+                    df = calculate_derived_features(df, working_pressure_col, revolution_col, n1, torque_constant, selected_distance, time_column, advance_rate_col)
                 
                 df_viz = rename_columns(df.copy(), working_pressure_col, revolution_col, selected_distance, advance_rate_col)
 
@@ -881,7 +904,7 @@ def main():
                             rock_df = preprocess_rock_strength_data(rock_strength_data)
                             if rock_df is not None and not rock_df.empty:
                                 rock_type = st.sidebar.selectbox("Select Rock Type", rock_df.index)
-    
+
                                 if rock_type and selected_features:
                                     fig = create_rock_strength_comparison_chart(df_viz, rock_df, rock_type, selected_features)
                                     if fig is not None:
