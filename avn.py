@@ -103,9 +103,9 @@ def load_data(file):
 
 # Function to identify special columns based on keywords
 def identify_special_columns(df):
-    working_pressure_keywords = ['working pressure', 'arbeitsdruck', 'sr_arbdr', 'SR_Arbdr','pressure', 'druck', 'arbdr']
-    revolution_keywords = ['revolution', 'revolution (rpm)','drehzahl', 'rpm', 'drehz', 'sr_drehz', 'SR_Drehz','Revolution', 'Revolution [rpm]','Revolution (rpm)']
-    advance_rate_keywords = ['advance rate', 'advance rate [mm/min]', 'Advance rate', 'Advance_rate','Advance Rate','vortrieb', 'vorschub', 'VTgeschw_Z', 'geschw', 'geschw_Z']
+    working_pressure_keywords = ['working pressure', 'arbeitsdruck', 'sr_arbdr', 'sr_arbdr', 'sr_arbdr']
+    revolution_keywords = ['revolution', 'revolution (rpm)','drehzahl', 'rpm', 'drehz', 'sr_drehz', 'sr_drehz', 'sr_drehz']
+    advance_rate_keywords = ['advance rate', 'advance rate [mm/min]', 'advance_rate','advance rate','vortrieb', 'vorschub', 'vtgeschw_z', 'geschw', 'geschw_z']
     penetration_rate_keywords = ['penetration rate', 'pen rate', 'penetration', 'penetration_rate']
 
     working_pressure_cols = [col for col in df.columns if any(kw in col.lower() for kw in working_pressure_keywords)]
@@ -130,7 +130,7 @@ def get_distance_columns(df):
 
 # Function to get time column
 def get_time_column(df):
-    time_keywords = ['relativzeit', 'relative time', 'time', 'datum', 'date', 'zeit', 'timestamp', 'Relative Time', 'Relativzeit']
+    time_keywords = ['relativzeit', 'relative time', 'time', 'datum', 'date', 'zeit', 'timestamp', 'relative_time', 'relative time']
     for col in df.columns:
         if any(keyword in col.lower() for keyword in time_keywords):
             try:
@@ -176,7 +176,8 @@ def calculate_derived_features(df, working_pressure_col, revolution_col, n1, tor
             df['Average Speed (mm/min)'] = (df['Distance_Diff'] / df['Time_Diff']) * 60  # Convert to mm/min
             
             if revolution_col is not None:
-                df['Penetration Rate [mm/rev]'] = df['Average Speed (mm/min)'] / df[revolution_col]
+                # Ensure revolution_col is not zero to avoid division by zero
+                df['Penetration Rate [mm/rev]'] = np.where(df[revolution_col] != 0, df['Average Speed (mm/min)'] / df[revolution_col], np.nan)
         
         return df
             
@@ -292,6 +293,10 @@ def create_parameters_vs_chainage(df, selected_features, chainage_column):
     # Update x-axis title
     fig.update_xaxes(title_text='Chainage [mm]', row=len(available_features), col=1)
 
+    # Configure x-axis to display without commas
+    for i in range(1, len(available_features) + 1):
+        fig.update_xaxes(tickformat=".0f", row=i, col=1)
+
     st.plotly_chart(fig, use_container_width=True)
 
 # Function to create Features vs Time plot
@@ -325,7 +330,7 @@ def create_features_vs_time(df, selected_features, time_column):
         fig.update_yaxes(title_text=feature, row=i, col=1)
 
     # Update x-axis titles dynamically
-    fig.update_xaxes(title_text='Relative Time [s/min]', row=len(selected_features), col=1)
+    fig.update_xaxes(title_text='Relative Time', row=len(selected_features), col=1)
 
     # Update layout with larger dimensions and better spacing
     fig.update_layout(
@@ -335,6 +340,9 @@ def create_features_vs_time(df, selected_features, time_column):
         showlegend=False,
         margin=dict(t=50, l=50, r=50, b=50)
     )
+
+    # Configure x-axis to display without commas
+    fig.update_xaxes(tickformat=".2f", row=len(selected_features), col=1)
 
     st.plotly_chart(fig, use_container_width=True)
 
@@ -419,6 +427,11 @@ def create_thrust_force_plots(df, advance_rate_col, num_cutting_rings):
         for i in range(1, 4):
             fig.update_yaxes(title_text="Thrust Force per Ring [kN]", row=i, col=1)
 
+        # Configure x-axis to display without commas
+        fig.update_xaxes(tickformat=".2f", row=1, col=1)
+        fig.update_xaxes(tickformat=".2f", row=2, col=1)
+        fig.update_xaxes(tickformat=".2f", row=3, col=1)
+
         st.plotly_chart(fig)
     except Exception as e:
         st.error(f"Error creating thrust force plots: {e}")
@@ -448,8 +461,35 @@ def create_statistical_summary(df, selected_features, round_to=2):
             {'selector': 'th', 'props': [('background-color', 'darkgreen'), ('color', 'white'), ('border', '1px solid black')]}
         ])
 
+        st.markdown(
+            """
+            <style>
+            .dataframe thead tr th:first-child {
+                background-color: darkgreen !important;
+                color: white !important;
+            }
+            .dataframe tbody tr th {
+                background-color: darkgreen !important;
+                color: white !important;
+            }
+            .dataframe tbody tr td {
+                background-color: darkgreen !important;
+                color: white !important;
+                border: 1px solid black !important;
+            }
+            </style>
+            """,
+            unsafe_allow_html=True
+        )
+
         st.write("### Statistical Summary")
-        st.dataframe(styled_summary)
+        st.dataframe(summary.style.set_properties(**{
+            'background-color': 'darkgreen',
+            'color': 'white',
+            'border-color': 'black'
+        }).set_table_styles([
+            {'selector': 'th', 'props': [('background-color', 'darkgreen'), ('color', 'white'), ('border', '1px solid black')]}
+        ]))
     except Exception as e:
         st.error(f"Error creating statistical summary: {e}")
 
@@ -529,6 +569,7 @@ def preprocess_rock_strength_data(df):
     except Exception as e:
         st.error(f"Error preprocessing rock strength data: {e}")
         return None
+
 # Function to create rock strength comparison chart
 def create_rock_strength_comparison_chart(df, rock_df, rock_type, selected_features):
     try:
