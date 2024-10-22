@@ -813,7 +813,6 @@ def safe_selectbox(label, options, suggested_option):
         index = 0  # Default to 'None' if suggested_option is not in options
     return st.sidebar.selectbox(label, options, index=index)
 
-# Main function
 def main():
     try:
         set_background_color()
@@ -828,14 +827,16 @@ def main():
         if uploaded_file is not None:
             if uploaded_file.name.endswith('.csv'):
                 try:
-                df = pd.read_csv(uploaded_file)
-            except pd.errors.ParserError as e:
-                st.error(f"Error reading CSV file: {e}")
+                    df = pd.read_csv(uploaded_file)
+                except pd.errors.ParserError as e:
+                    st.error(f"Error reading CSV file: {e}")
+                    return
             elif uploaded_file.name.endswith('.xlsx'):
                 try:
-                df = pd.read_excel(uploaded_file)
-            except ValueError as e:
-                st.error(f"Error reading Excel file: {e}")
+                    df = pd.read_excel(uploaded_file)
+                except ValueError as e:
+                    st.error(f"Error reading Excel file: {e}")
+                    return
             st.write("Data preview:", df.head())
 
             # 1. Filtering Data based on Chainage
