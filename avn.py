@@ -1,13 +1,3 @@
-import streamlit as st
-import pandas as pd
-import numpy as np
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
-import seaborn as sns
-import matplotlib.pyplot as plt
-import io
-import base64
-
 # Set page config at the very beginning
 st.set_page_config(
     page_title="Herrenknecht Hard Rock Data Analysis App",
@@ -38,23 +28,22 @@ def add_logo():
                 background-repeat: no-repeat;
                 background-size: 120px;
                 background-position: 10px 10px;
-                padding-top: 120px;  /* Consistent padding */
+                padding-top: 120px;
             }
             [data-testid="stSidebar"]::before {
                 content: "";
-                margin-bottom: 20px;  /* Consistent margin */
+                margin-bottom: 20px;
                 display: block;
             }
             [data-testid="stSidebar"] > div:first-child {
-                padding-top: 0;  /* Remove additional padding */
+                padding-top: 0;
             }
             .sidebar-content {
-                padding-top: 0;  /* Remove additional padding */
+                padding-top: 0;
             }
             .sidebar-content > * {
                 margin-bottom: 0.5rem !important;
             }
-            /* Consistent font sizes for headers */
             .sidebar .sidebar-content div[data-testid="stMarkdownContainer"] > h1 {
                 font-size: 1.5em;
                 margin-top: 0;
@@ -63,11 +52,9 @@ def add_logo():
                 font-size: 1.2em;
                 margin-top: 0;
             }
-            /* Consistent sizing for file uploader */
             .sidebar .sidebar-content [data-testid="stFileUploader"] {
                 margin-bottom: 0.5rem;
             }
-            /* Consistent spacing for radio buttons */
             .sidebar .sidebar-content [data-testid="stRadio"] {
                 margin-bottom: 0.5rem;
             }
@@ -87,10 +74,10 @@ def load_data(file):
     try:
         if file.name.endswith('.csv'):
             df = pd.read_csv(file, sep=';', decimal=',', na_values=['', 'NA', 'N/A', 'nan', 'NaN'], keep_default_na=True, engine='python')
-            df.columns = df.columns.str.strip()  # Trim whitespace from column names
+            df.columns = df.columns.str.strip()
         elif file.name.endswith('.xlsx'):
             df = pd.read_excel(file)
-            df.columns = df.columns.str.strip()  # Trim whitespace from column names
+            df.columns = df.columns.str.strip()
         else:
             st.error("Unsupported file format")
             return None
@@ -99,7 +86,6 @@ def load_data(file):
             st.error("The uploaded file is empty or not formatted correctly.")
             return None
         
-        # Ensure all columns are properly read
         df.columns = [col.strip() for col in df.columns]
 
         return df
@@ -222,10 +208,14 @@ def safe_selectbox(label, options, suggested_option):
     except ValueError:
         index = 0  # Default to 'None' if suggested_option is not in options
     return st.sidebar.selectbox(label, options, index=index)
+
 # Function to handle chainage filtering and averaging
 def handle_chainage_filtering_and_averaging(df, chainage_column):
     try:
         st.sidebar.header("Chainage Filtering & Averaging")
+
+        # Ensure chainage_column is numeric
+        df[chainage_column] = pd.to_numeric(df[chainage_column], errors='coerce')
 
         # User input for chainage range
         min_chainage = float(df[chainage_column].min())
@@ -246,7 +236,11 @@ def handle_chainage_filtering_and_averaging(df, chainage_column):
         # Aggregate data based on averaging interval
         bins = np.arange(filtered_df[chainage_column].min(), filtered_df[chainage_column].max() + interval_in_mm, interval_in_mm)
         filtered_df['Chainage Bin'] = pd.cut(filtered_df[chainage_column], bins=bins, include_lowest=True)
-        aggregated_df = filtered_df.groupby('Chainage Bin').mean().reset_index()
+
+        numeric_columns = filtered_df.select_dtypes(include=[np.number]).columns.tolist()
+        numeric_columns.append('Chainage Bin')  # Ensure 'Chainage Bin' is included in the groupby
+
+        aggregated_df = filtered_df.groupby('Chainage Bin')[numeric_columns].mean().reset_index()
         aggregated_df[chainage_column] = aggregated_df['Chainage Bin'].apply(lambda x: x.mid)
 
         return aggregated_df
@@ -258,6 +252,9 @@ def handle_chainage_filtering_and_averaging(df, chainage_column):
 def handle_time_filtering_and_averaging(df, time_column):
     try:
         st.sidebar.header("Time Filtering & Averaging")
+
+        # Ensure time_column is datetime
+        df[time_column] = pd.to_datetime(df[time_column], errors='coerce')
 
         # User input for time range
         min_time = df[time_column].min()
@@ -277,12 +274,15 @@ def handle_time_filtering_and_averaging(df, time_column):
 
         # Aggregate data based on averaging interval
         filtered_df = filtered_df.set_index(time_column)
-        aggregated_df = filtered_df.resample(interval).mean().reset_index()
+        numeric_columns = filtered_df.select_dtypes(include=[np.number]).columns.tolist()
+
+        aggregated_df = filtered_df[numeric_columns].resample(interval).mean().reset_index()
 
         return aggregated_df
     except Exception as e:
         st.error(f"Error in time filtering and averaging: {e}")
         return df
+
 
 # Function to create Parameters vs Chainage plot
 def create_parameters_vs_chainage(df, selected_features, chainage_column):
@@ -607,6 +607,7 @@ def create_rock_strength_comparison_chart(df, rock_df, rock_type, selected_featu
         st.error(f"Error creating rock strength comparison chart: {e}")
 
 # Main function
+# Main function
 def main():
     try:
         set_background_color()
@@ -752,4 +753,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
