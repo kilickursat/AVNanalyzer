@@ -217,8 +217,10 @@ def safe_selectbox(label, options, suggested_option):
     return st.sidebar.selectbox(label, options, index=index)
 
 # Function to handle data averaging based on user-specified intervals
-def average_data(df, time_column, averaging_interval):
+def average_data(df, time_column, averaging_interval, skip_averaging=False):
     try:
+        if skip_averaging:
+            return df
         df[time_column] = pd.to_datetime(df[time_column], errors='coerce')
         df = df.set_index(time_column)
         numeric_columns = df.select_dtypes(include=[np.number]).columns.tolist()
@@ -265,7 +267,7 @@ def create_parameters_vs_chainage(df, selected_features, chainage_column):
                 go.Scatter(
                     x=df[chainage_column],
                     y=y_data,
-                    mode='lines+markers',
+                    mode='lines',
                     name=feature_name,
                     line=dict(color=colors[i % len(colors)], width=2)
                 ),
@@ -311,7 +313,7 @@ def create_features_vs_time(df, selected_features, time_column):
             go.Scatter(
                 x=df[time_column],
                 y=df[feature],
-                mode='lines+markers',
+                mode='lines',
                 name=feature,
                 line=dict(color=colors[i % len(colors)], width=2)
             ),
@@ -323,7 +325,7 @@ def create_features_vs_time(df, selected_features, time_column):
         fig.update_yaxes(title_text=feature, row=i, col=1)
 
     # Update x-axis titles dynamically
-    fig.update_xaxes(title_text='Time', row=len(selected_features), col=1)
+    fig.update_xaxes(title_text='Relative Time [s/min]', row=len(selected_features), col=1)
 
     # Update layout with larger dimensions and better spacing
     fig.update_layout(
@@ -352,53 +354,53 @@ def create_thrust_force_plots(df, advance_rate_col, num_cutting_rings):
             return
 
         # Divide thrust force by number of cutting rings
-        df['Thrust Force per Ring'] = df[thrust_force_col] / num_cutting_rings
+        df['Thrust Force per Ring [kN]'] = df[thrust_force_col] / num_cutting_rings
 
         # Create subplots
         fig = make_subplots(rows=3, cols=1, 
-                           subplot_titles=("Thrust Force vs Calculated Penetration Rate", 
+                           subplot_titles=("Thrust Force vs Penetration Rate", 
                                          "Thrust Force vs Average Speed", 
                                          "Thrust Force vs Advance Rate"),
                            vertical_spacing=0.1)
 
-        # Plot 1: Thrust Force vs Calculated Penetration Rate
-        if 'Calculated Penetration Rate [mm/rev]' in df.columns:
-            mask = df['Calculated Penetration Rate [mm/rev]'].notna()
+        # Plot 1: Thrust Force vs Penetration Rate
+        if 'Penetration Rate [mm/rev]' in df.columns:
+            mask = df['Penetration Rate [mm/rev]'].notna()
             fig.add_trace(go.Scatter(
-                x=df.loc[mask, 'Calculated Penetration Rate [mm/rev]'], 
-                y=df.loc[mask, 'Thrust Force per Ring'], 
-                mode='markers', 
-                name='vs Calculated Penetration Rate', 
-                marker=dict(color='blue', size=5)
+                x=df.loc[mask, 'Penetration Rate [mm/rev]'], 
+                y=df.loc[mask, 'Thrust Force per Ring [kN]'], 
+                mode='lines',
+                name='Penetration Rate',
+                line=dict(color='blue', width=2)
             ), row=1, col=1)
         else:
-            st.warning("Calculated Penetration Rate [mm/rev] column not found in the dataset.")
+            st.warning("Penetration Rate [mm/rev] column not found in the dataset.")
 
         # Plot 2: Thrust Force vs Average Speed
         if 'Average Speed (mm/min)' in df.columns:
             mask = df['Average Speed (mm/min)'].notna()
             fig.add_trace(go.Scatter(
                 x=df.loc[mask, 'Average Speed (mm/min)'], 
-                y=df.loc[mask, 'Thrust Force per Ring'], 
-                mode='markers', 
-                name='vs Average Speed',
-                marker=dict(color='green', size=5)
+                y=df.loc[mask, 'Thrust Force per Ring [kN]'], 
+                mode='lines',
+                name='Average Speed',
+                line=dict(color='green', width=2)
             ), row=2, col=1)
         else:
             st.warning("Average Speed (mm/min) column not found in the dataset.")
 
-        # Plot 3: Thrust Force vs Selected Advance Rate
+        # Plot 3: Thrust Force vs Advance Rate
         if advance_rate_col and advance_rate_col in df.columns:
             mask = df[advance_rate_col].notna()
             fig.add_trace(go.Scatter(
                 x=df.loc[mask, advance_rate_col], 
-                y=df.loc[mask, 'Thrust Force per Ring'], 
-                mode='markers', 
-                name='vs Advance Rate',
-                marker=dict(color='red', size=5)
+                y=df.loc[mask, 'Thrust Force per Ring [kN]'], 
+                mode='lines',
+                name='Advance Rate',
+                line=dict(color='red', width=2)
             ), row=3, col=1)
         else:
-            st.warning("Selected advance rate column not available for plotting.")
+            st.warning("Advance rate column not available for plotting.")
 
         # Update layout
         fig.update_layout(
@@ -410,8 +412,8 @@ def create_thrust_force_plots(df, advance_rate_col, num_cutting_rings):
         )
         
         # Update axes labels
-        fig.update_xaxes(title_text="Calculated Penetration Rate [mm/rev]", row=1, col=1)
-        fig.update_xaxes(title_text="Average Speed (mm/min)", row=2, col=1)
+        fig.update_xaxes(title_text="Penetration Rate [mm/rev]", row=1, col=1)
+        fig.update_xaxes(title_text="Average Speed [mm/min]", row=2, col=1)
         fig.update_xaxes(title_text=advance_rate_col if advance_rate_col else "Advance Rate [mm/min]", row=3, col=1)
         
         for i in range(1, 4):
@@ -421,7 +423,7 @@ def create_thrust_force_plots(df, advance_rate_col, num_cutting_rings):
     except Exception as e:
         st.error(f"Error creating thrust force plots: {e}")
 
-# Function to create statistical summary
+# Function to create statistical summary with dark green background and style
 def create_statistical_summary(df, selected_features, round_to=2):
     if not selected_features:
         st.warning("Please select at least one feature for the statistical summary.")
@@ -434,12 +436,20 @@ def create_statistical_summary(df, selected_features, round_to=2):
             return
 
         summary = numeric_df.describe().transpose().round(round_to)
-
-        # Adding skewness and kurtosis
         summary['skewness'] = numeric_df.skew().round(round_to)
         summary['kurtosis'] = numeric_df.kurtosis().round(round_to)
 
-        st.dataframe(summary)
+        # Apply styling
+        styled_summary = summary.style.set_properties(**{
+            'background-color': 'darkgreen',
+            'color': 'white',
+            'border-color': 'black'
+        }).set_table_styles([
+            {'selector': 'th', 'props': [('background-color', 'darkgreen'), ('color', 'white'), ('border', '1px solid black')]}
+        ])
+
+        st.write("### Statistical Summary")
+        st.dataframe(styled_summary)
     except Exception as e:
         st.error(f"Error creating statistical summary: {e}")
 
@@ -681,9 +691,10 @@ def main():
 
                 st.subheader(f"Visualization: {selected_option}")
 
-                # Apply averaging based on sampling rate
+                # Apply averaging based on sampling rate, unless Polar Plot is selected
+                skip_averaging = selected_option == 'Pressure Distribution'
                 if time_column:
-                    df_viz = average_data(df_viz, time_column, averaging_interval)
+                    df_viz = average_data(df_viz, time_column, averaging_interval, skip_averaging=skip_averaging)
                 else:
                     st.warning("Time column not detected. Some visualizations may not function correctly.")
 
@@ -700,6 +711,8 @@ def main():
                         st.warning("Please select features and ensure a valid time column for visualization.")
 
                 elif selected_option == 'Thrust Force Plots':
+                    if 'Penetration Rate [mm/rev]' not in df_viz.columns:
+                        st.warning("Penetration Rate [mm/rev] not calculated correctly.")
                     create_thrust_force_plots(
                         df_viz, 
                         'Advance rate [mm/min]' if advance_rate_col != 'None' else None,
@@ -713,7 +726,7 @@ def main():
                         st.warning("Please select features for statistical summary.")
 
                 elif selected_option == 'Pressure Distribution':
-                    if working_pressure_col != 'None' and time_column is not None:
+                    if 'Working pressure [bar]' in df_viz.columns and time_column is not None:
                         create_pressure_distribution_polar_plot(df_viz, 'Working pressure [bar]', time_column)
                     else:
                         st.warning("Please ensure both working pressure and time columns are selected.")
