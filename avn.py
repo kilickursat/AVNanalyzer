@@ -45,6 +45,15 @@ def load_data(file):
         return None
 
     return df
+# Function to find the time column based on keywords
+def find_time_column(df):
+    time_keywords = ['relativzeit', 'zeit', 'Relative time', 'Relative Time', 'time', 'Relativzeit', 'Relativ zeit', 'utc']
+    for keyword in time_keywords:
+        matches = [col for col in df.columns if keyword.lower() in col.lower()]
+        if matches:
+            return matches[0]
+    return None
+    
 # Function to aggregate data to per-second level
 def aggregate_data(df, sampling_rate):
     if sampling_rate == 'millisecond' or sampling_rate == '10 millisecond':
@@ -203,7 +212,7 @@ def create_statistical_summary(df, round_to=2):
     st.markdown(final_html, unsafe_allow_html=True)
     
 # Function to create Features vs Time plot with Plotly subplots
-def create_features_vs_time(df):
+def create_features_vs_time(df, time_col):
     features = st.multiselect("Select features for Time Series plot", df.columns, default=[
         'Revolution [rpm]', 'Thrust force [kN]', 'Calculated torque [kNm]', 'Penetration_Rate', 'Working pressure [bar]'
     ])
@@ -221,7 +230,7 @@ def create_features_vs_time(df):
 
     fig = make_subplots(rows=len(features), cols=1, shared_xaxes=True, subplot_titles=features)
     for i, feature in enumerate(features, start=1):
-        fig.add_trace(go.Scatter(x=df['Relative time'], y=df[feature], mode='lines', name=feature, line=dict(color=colors.get(feature, '#000000'))), row=i, col=1)
+        fig.add_trace(go.Scatter(x=df[time_col], y=df[feature], mode='lines', name=feature, line=dict(color=colors.get(feature, '#000000'))), row=i, col=1)
 
     fig.update_layout(height=300 * len(features), width=1000, title_text='Features vs Time')
     st.plotly_chart(fig)
@@ -432,16 +441,22 @@ def main():
         df = load_data(uploaded_file)
 
         if df is not None:
+            # Find time column based on keywords or let user select
+            time_col = find_time_column(df)
+            if not time_col:
+                time_col = st.sidebar.selectbox("Select Relative Time Column", df.columns)
+            else:
+                st.sidebar.write(f"Auto-detected Time Column: {time_col}")
+
             # Allow user to select sampling rate for aggregation
             sampling_rate = st.sidebar.selectbox("Select Raw Data Sampling Rate", ['millisecond', '10 millisecond', 'second', 'minute'])
             
             # Aggregate data if required
             if sampling_rate in ['millisecond', '10 millisecond']:
-                df = aggregate_data(df, sampling_rate)
+                df = aggregate_data(df, time_col, sampling_rate)
 
             # Allow user to select column mappings
             st.sidebar.subheader("Column Selection")
-            relative_time_col = st.sidebar.selectbox("Select Relative Time Column", df.columns)
             working_pressure_col = st.sidebar.selectbox("Select Working Pressure Column", df.columns)
             revolution_col = st.sidebar.selectbox("Select Revolution Column", df.columns)
             thrust_force_col = st.sidebar.selectbox("Select Thrust Force Column", df.columns)
@@ -450,7 +465,7 @@ def main():
 
             # Rename columns based on user selection
             df = df.rename(columns={
-                relative_time_col: 'Relative time',
+                time_col: 'Relative time',
                 working_pressure_col: 'Working pressure [bar]',
                 revolution_col: 'Revolution [rpm]',
                 thrust_force_col: 'Thrust force [kN]',
@@ -473,7 +488,7 @@ def main():
 
             # Visualization based on user selection
             if options == 'Features vs Time':
-                create_features_vs_time(df)
+                create_features_vs_time(df, 'Relative time')
             elif options == 'Correlation Heatmap':
                 features = st.multiselect("Select features for correlation heatmap", df.columns, default=[
                     'Revolution [rpm]', 'Thrust force [kN]', 'Chainage', 'Calculated torque [kNm]', 'Penetration_Rate', 'Working pressure [bar]'
