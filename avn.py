@@ -1,30 +1,122 @@
 # -*- coding: utf-8 -*-
 """
-Created on Tue Oct 22 08:48:31 2024
+Created on Wed Oct 16 08:43:25 2024
 
 @author: KilicK
 """
 
 import streamlit as st
-import pandas as pd
 import numpy as np
+import pandas as pd
+import base64
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-import seaborn as sns
-from scipy.interpolate import griddata
-from scipy import stats
-import matplotlib.pyplot as plt
-import io
-import base64
 
-# Set page config at the very beginning
-st.set_page_config(
-    page_title="Herrenknecht Hard Rock Data Analysis App",
-    page_icon="https://raw.githubusercontent.com/kilickursat/torque_plot-updated/main/Herrenknecht_logo.svg-1024x695.png",
-    layout="wide"
-)
+# Optimization: Add cache decorator to improve performance on repeated file loads
+@st.cache_data
+def load_data(file, file_type):
+    try:
+        if file_type == 'csv':
+            # Try different separators and encodings
+            for sep in [';', ',']:
+                for encoding in ['utf-8', 'iso-8859-1']:
+                    try:
+                        df = pd.read_csv(file, sep=sep, encoding=encoding, decimal=',')
+                        return df
+                    except:
+                        pass
+            raise ValueError("Unable to read CSV file with tried separators and encodings")
+        elif file_type == 'xlsx':
+            df = pd.read_excel(file)
+            return df
+        else:
+            raise ValueError("Unsupported file type")
+    except Exception as e:
+        st.error(f"Error loading file: {str(e)}")
+        return None
+
+# Update the sensor column map with more potential column names
+sensor_column_map = {
+    "pressure": ["Working pressure [bar]", "AzV.V13_SR_ArbDr_Z | DB 60.DBD 26", "Pression [bar]", "Presión [bar]", "Pressure", "Pressure [bar]", "Working Pressure"],
+    "revolution": ["Revolution [rpm]", "AzV.V13_SR_Drehz_nach_Abgl_Z | DB 60.DBD 30", "Vitesse [rpm]", "Revoluciones [rpm]", "RPM", "Speed", "Rotation Speed"]
+}
+
+def find_sensor_columns(df):
+    found_columns = {}
+    for sensor, possible_names in sensor_column_map.items():
+        for name in possible_names:
+            if name in df.columns:
+                found_columns[sensor] = name
+                break
+        if sensor not in found_columns:
+            # If exact match not found, try case-insensitive partial match
+            for col in df.columns:
+                if any(name.lower() in col.lower() for name in possible_names):
+                    found_columns[sensor] = col
+                    break
+    return found_columns
+
+@st.cache_data
+def load_machine_specs(file):
+    """Load machine specifications from XLSX file."""
+    specs_df = pd.read_excel(file)
+    specs_df.columns = specs_df.columns.str.strip()  # Strip any leading/trailing whitespace and newlines
+    return specs_df
+
+def get_machine_params(specs_df, machine_type):
+    """Extract relevant machine parameters based on machine type."""
+    machine_data = specs_df[specs_df['Projekt'] == machine_type].iloc[0]
+    
+    def find_column(possible_names):
+        for name in possible_names:
+            if name in machine_data.index:
+                return name
+        return None
+
+    # Define possible column names
+    n1_names = ['n1[1/min]', 'n1 (1/min)', 'n1[rpm]']
+    n2_names = ['n2[1/min]', 'n2 (1/min)', 'n2[rpm]']
+    m_cont_names = ['M(dauer) [kNm]', 'M(dauer)[kNm]', 'M (dauer)']
+    m_max_names = ['M(max)', 'M max', 'M (max)', 'M_max[kNm]', 'M(max)[kNm]']
+    torque_constant_names = ['Drehmomentumrechnung[kNm/bar]', 'Drehmomentumrechnung [kNm/bar]']
+
+    # Find the correct column names
+    n1_col = find_column(n1_names)
+    n2_col = find_column(n2_names)
+    m_cont_col = find_column(m_cont_names)
+    m_max_col = find_column(m_max_names)
+    torque_constant_col = find_column(torque_constant_names)
+
+    # Return machine parameters
+    return {
+        'n1': machine_data[n1_col],
+        'n2': machine_data[n2_col],
+        'M_cont_value': machine_data[m_cont_col],
+        'M_max_Vg1': machine_data[m_max_col],
+        'torque_constant': machine_data[torque_constant_col]
+    }
+
+def calculate_whisker_and_outliers(data):
+    """Calculate whiskers and outliers for a given dataset."""
+    Q1 = data.quantile(0.25)
+    Q3 = data.quantile(0.75)
+    IQR = Q3 - Q1
+    whisker_length = 1.5 * IQR
+    lower_whisker = Q1 - whisker_length
+    upper_whisker = Q3 + whisker_length
+    outliers = data[(data < lower_whisker) | (data > upper_whisker)]
+    return lower_whisker, upper_whisker, outliers
+
+def set_page_config():
+    """Set the Streamlit page configuration."""
+    st.set_page_config(
+        page_title="Herrenknecht Torque Analysis",
+        page_icon="https://raw.githubusercontent.com/kilickursat/torque_plot-updated/main/Herrenknecht_logo.svg-1024x695.png",
+        layout="wide"
+    )
 
 def set_background_color():
+    """Set the background color for the app."""
     st.markdown(
         """
         <style>
@@ -38,1009 +130,315 @@ def set_background_color():
     )
 
 def add_logo():
-    try:
-        st.sidebar.markdown(
-            """
-            <style>
-            [data-testid="stSidebar"] {
-                background-image: url(https://github.com/kilickursat/AVNanalyzer/raw/main/Herrenknecht_logo.svg);
-                background-repeat: no-repeat;
-                background-size: 120px;
-                background-position: 10px 10px;
-                padding-top: 120px;  /* Consistent padding */
-            }
-            [data-testid="stSidebar"]::before {
-                content: "";
-                margin-bottom: 20px;  /* Consistent margin */
-                display: block;
-            }
-            [data-testid="stSidebar"] > div:first-child {
-                padding-top: 0;  /* Remove additional padding */
-            }
-            .sidebar-content {
-                padding-top: 0;  /* Remove additional padding */
-            }
-            .sidebar-content > * {
-                margin-bottom: 0.5rem !important;
-            }
-            /* Consistent font sizes for headers */
-            .sidebar .sidebar-content div[data-testid="stMarkdownContainer"] > h1 {
-                font-size: 1.5em;
-                margin-top: 0;
-            }
-            .sidebar .sidebar-content div[data-testid="stMarkdownContainer"] > h2 {
-                font-size: 1.2em;
-                margin-top: 0;
-            }
-            /* Consistent sizing for file uploader */
-            .sidebar .sidebar-content [data-testid="stFileUploader"] {
-                margin-bottom: 0.5rem;
-            }
-            /* Consistent spacing for radio buttons */
-            .sidebar .sidebar-content [data-testid="stRadio"] {
-                margin-bottom: 0.5rem;
-            }
-            .sidebar .sidebar-content [data-testid="stRadio"] > div {
-                margin-bottom: 0.2rem;
-            }
-            </style>
-            """,
-            unsafe_allow_html=True,
-        )
-    except Exception as e:
-        st.error(f"Failed to add logo: {e}")
-
-# Helper function to clean numeric columns
-def clean_numeric_column(df, column_name):
-    df[column_name] = df[column_name].replace(r'[^0-9.-]+', '', regex=True)
-    df[column_name] = pd.to_numeric(df[column_name], errors='coerce')
-    df[column_name] = df[column_name].fillna(df[column_name].median())
-    return df
-
-# Advanced rate calculation function
-def calculate_advance_rate_and_stats(df, distance_column, time_column):
-    try:
-        if not all(col in df.columns for col in [distance_column, time_column]):
-            raise ValueError(f"Required columns not found in DataFrame")
-            
-        if len(df) > 1:
-            weg = round(df[distance_column].max() - df[distance_column].min(), 2)
-            zeit = round((df[time_column].max() - df[time_column].min()).total_seconds() / 60, 2)  # Convert to minutes
-        else:
-            weg = round(df[distance_column].iloc[0], 2)
-            zeit = round(df[time_column].iloc[0].timestamp() / 60, 2)  # Convert to minutes if single entry
-            
-        average_speed = round(weg / zeit, 2) if zeit != 0 else 0
-        
-        result = {
-            "Total Distance (mm)": weg,
-            "Total Time (min)": zeit,
-            "Average Speed (mm/min)": average_speed
+    """Add a sidebar logo for the app."""
+    st.sidebar.markdown(
+        """
+        <style>
+        [data-testid="stSidebar"] {
+            background-image: url(https://raw.githubusercontent.com/kilickursat/torque_plot-updated/main/Herrenknecht_logo.svg-1024x695.png);
+            background-repeat: no-repeat;
+            background-size: 140px;
+            background-position: 10px 10px;
         }
-        
-        return result, average_speed
-            
-    except Exception as e:
-        st.error(f"Error in advance rate calculation: {e}")
-        return None, 0
-
-# Penetration rate calculation function
-def calculate_penetration_rate(row, revolution_col):
-    try:
-        speed = row['Average Speed (mm/min)']
-        revolution = row[revolution_col]
-        
-        if pd.isna(speed) or pd.isna(revolution):
-            return np.nan
-        elif revolution == 0:
-            return np.inf if speed != 0 else 0
-        else:
-            return round(speed / revolution, 4)
-    except Exception as e:
-        st.error(f"Error calculating penetration rate: {e}")
-        return np.nan
-
-# Function to calculate torque
-def calculate_torque(working_pressure, torque_constant, current_speed=None, n1=None):
-    if current_speed is None or n1 is None:
-        torque = working_pressure * torque_constant
-    else:
-        if current_speed < n1:
-            torque = working_pressure * torque_constant
-        else:
-            torque = (n1 / current_speed) * torque_constant * working_pressure
-    return torque
-
-# Function to calculate derived features
-def calculate_derived_features(df, working_pressure_col, revolution_col, n1, torque_constant, selected_distance):
-    try:
-        if working_pressure_col is not None and revolution_col is not None:
-            df[working_pressure_col] = pd.to_numeric(df[working_pressure_col], errors='coerce')
-            df[revolution_col] = pd.to_numeric(df[revolution_col], errors='coerce')
-
-            def calculate_torque_wrapper(row):
-                working_pressure = row[working_pressure_col]
-                current_speed = row[revolution_col]
-
-                if pd.isna(working_pressure) or pd.isna(current_speed):
-                    return np.nan
-
-                if current_speed < n1:
-                    torque = working_pressure * torque_constant
-                else:
-                    torque = (n1 / current_speed) * torque_constant * working_pressure
-
-                return round(torque, 2)
-
-            df['Calculated torque [kNm]'] = df.apply(calculate_torque_wrapper, axis=1)
-        
-        # Calculate advance rate and average speed
-        distance_column = selected_distance
-        time_column = get_time_column(df)
-        
-        if distance_column in df.columns and time_column:
-            result, average_speed = calculate_advance_rate_and_stats(df, distance_column, time_column)
-            if result:
-                df['Average Speed (mm/min)'] = average_speed
-            
-            if revolution_col is not None:
-                df['Penetration Rate [mm/rev]'] = df.apply(lambda row: calculate_penetration_rate(row, revolution_col), axis=1)
-        
-        return df
-            
-    except Exception as e:
-        st.error(f"Error calculating derived features: {str(e)}")
-        return df
-
-# Helper functions for column identification
-def identify_special_columns(df):
-    working_pressure_keywords = ['working pressure', 'arbeitsdruck', 'sr_arbdr', 'SR_Arbdr','pressure', 'druck', 'arbdr']
-    revolution_keywords = ['revolution', 'revolution (rpm)','drehzahl', 'rpm', 'drehz', 'sr_drehz', 'SR_Drehz','Revolution', 'Revolution [rpm]','Revolution (rpm)']
-    advance_rate_keywords = ['advance rate', 'advance rate [mm/min]', 'Advance rate', 'Advance_rate','Advance Rate','vortrieb', 'vorschub', 'VTgeschw_Z', 'geschw', 'geschw_Z']
-
-    working_pressure_cols = [col for col in df.columns if any(kw in col.lower() for kw in working_pressure_keywords)]
-    revolution_cols = [col for col in df.columns if any(kw in col.lower() for kw in revolution_keywords)]
-    advance_rate_cols = [col for col in df.columns if any(kw in col.lower() for kw in advance_rate_keywords)]
-
-    return working_pressure_cols, revolution_cols, advance_rate_cols
-
-def get_distance_columns(df):
-    distance_keywords = ['distance', 'length', 'travel', 'chainage', 'tunnellänge neu', 'tunnellänge', 'weg_mm_z', 'vtp_weg']
-    return [col for col in df.columns if any(keyword in col.lower() for keyword in distance_keywords)]
-
-def get_time_column(df):
-    time_keywords = ['relativzeit', 'relative time', 'time', 'datum', 'date', 'zeit', 'timestamp', 'Relative Time', 'Relativzeit']
-    for col in df.columns:
-        if any(keyword in col.lower() for keyword in time_keywords):
-            try:
-                df[col] = pd.to_datetime(df[col], errors='coerce', infer_datetime_format=True)
-                if df[col].notna().sum() > 0:
-                    return col
-            except:
-                continue
-    return None
-
-# Enhanced Function to read CSV or Excel file with validation
-@st.cache_data
-def load_data(file):
-    try:
-        if file.name.endswith('.csv'):
-            df = pd.read_csv(file, sep=';', decimal=',', na_values=['', 'NA', 'N/A', 'nan', 'NaN'], keep_default_na=True, engine='python')
-            df.columns = df.columns.str.strip()  # Trim whitespace from column names
-        elif file.name.endswith('.xlsx'):
-            df = pd.read_excel(file)
-            df.columns = df.columns.str.strip()  # Trim whitespace from column names
-        else:
-            st.error("Unsupported file format")
-            return None
-
-        if df.empty:
-            st.error("The uploaded file is empty or not formatted correctly.")
-            return None
-        
-        # Ensure all columns are properly read
-        df.columns = [col.strip() for col in df.columns]
-
-        return df
-        
-    except Exception as e:
-        st.error(f"Error loading data: {e}")
-        return None
-
-def read_rock_strength_data(file):
-    try:
-        df = pd.read_excel(file)
-        return df
-    except Exception as e:
-        st.error(f"Error reading rock strength data: {e}")
-        return None
-
-# Function to preprocess the rock strength data
-def preprocess_rock_strength_data(df):
-    try:
-        df['Rock Type'] = df['Probenbezeichnung'].str.split().str[0]
-        pivoted = df.pivot_table(values='Value', index='Rock Type', columns='Test', aggfunc='mean')
-        pivoted.rename(columns={'UCS': 'UCS (MPa)', 'BTS': 'BTS (MPa)', 'PLT': 'PLT (MPa)'}, inplace=True)
-        return pivoted
-    except Exception as e:
-        st.error(f"Error preprocessing rock strength data: {e}")
-        return None
-
-# Updated function to create comparison chart for machine parameters vs rock strength
-def create_rock_strength_comparison_chart(df, rock_df, rock_type, selected_features):
-    try:
-        # Prepare data for plotting
-        rock_strength_data = rock_df.loc[rock_type].dropna()
-        machine_data = df[selected_features].mean()
-
-        # Combine rock strength and machine data
-        combined_data = pd.concat([rock_strength_data, machine_data])
-
-        # Create the bar chart
-        fig = go.Figure()
-
-        # Add bars for rock strength parameters
-        fig.add_trace(go.Bar(
-            x=rock_strength_data.index,
-            y=rock_strength_data.values,
-            name='Rock Strength',
-            marker_color='#FF6B6B'
-        ))
-
-        # Add bars for machine parameters
-        fig.add_trace(go.Bar(
-            x=machine_data.index,
-            y=machine_data.values,
-            name='Machine Parameters',
-            marker_color='#4ECDC4'
-        ))
-
-        # Update layout
-        fig.update_layout(
-            title=f'Rock Strength ({rock_type}) vs Machine Parameters Comparison',
-            xaxis_title="Parameters",
-            yaxis_title="Values",
-            barmode='group',
-            height=600,
-            width=1000,
-            showlegend=True,
-            template='plotly_white',
-            legend=dict(
-                yanchor="top",
-                y=0.99,
-                xanchor="right",
-                x=0.99,
-                bgcolor="rgba(255, 255, 255, 0.8)",
-                bordercolor="rgba(0, 0, 0, 0.3)",
-                borderwidth=1
-            )
-        )
-
-        # Improve hover information
-        fig.update_traces(
-            hovertemplate="<b>%{x}</b><br>" +
-                         "Value: %{y:.2f}<br>" +
-                         "<extra></extra>"
-        )
-
-        return fig
-    except Exception as e:
-        st.error(f"Error creating rock strength comparison chart: {e}")
-        return None
-
-def rename_columns(df, working_pressure_col, revolution_col, distance_col, advance_rate_col):
-    column_mapping = {}
-    if working_pressure_col and working_pressure_col != 'None':
-        column_mapping[working_pressure_col] = 'Working pressure [bar]'
-    if revolution_col and revolution_col != 'None':
-        column_mapping[revolution_col] = 'Revolution [rpm]'
-    if distance_col and distance_col != 'None':
-        column_mapping[distance_col] = 'Chainage [mm]'
-    if advance_rate_col and advance_rate_col != 'None':
-        column_mapping[advance_rate_col] = 'Advance rate [mm/min]'
-    return df.rename(columns=column_mapping)
-
-# Updated function to visualize correlation heatmap with dynamic input
-def create_correlation_heatmap(df, selected_features):
-    if len(selected_features) < 2:
-        st.warning("Please select at least two features for the correlation heatmap.")
-        return
-
-    # Only use the features that the user has explicitly selected
-    available_features = [f for f in selected_features if f in df.columns]
-    
-    if len(available_features) < 2:
-        st.warning("Please select at least two valid features for the correlation heatmap.")
-        return
-
-    try:
-        corr_matrix = df[available_features].corr()
-        fig, ax = plt.subplots(figsize=(12, 10))
-        sns.heatmap(corr_matrix, annot=True, cmap='coolwarm', vmin=-1, vmax=1, center=0, ax=ax)
-        ax.set_title('Correlation Heatmap of Selected Parameters')
-        st.pyplot(fig)
-    except Exception as e:
-        st.error(f"Error creating correlation heatmap: {str(e)}")
-
-# Updated function to create statistical summary
-def create_statistical_summary(df, selected_features, round_to=2):
-    if not selected_features:
-        st.warning("Please select at least one feature for the statistical summary.")
-        return
-
-    summary_dict = {}
-    for feature in selected_features:
-        summary_dict[feature] = {
-            'count': int(df[feature].count()),
-            'mean': round(df[feature].mean(), round_to),
-            'median': round(df[feature].median(), round_to),
-            'std': round(df[feature].std(), round_to),
-            'min': round(df[feature].min(), round_to),
-            '25%': round(df[feature].quantile(0.25), round_to),
-            '50%': round(df[feature].quantile(0.50), round_to),
-            '75%': round(df[feature].quantile(0.75), round_to),
-            'max': round(df[feature].max(), round_to),
-            'skewness': round(df[feature].skew(), round_to),
-            'kurtosis': round(df[feature].kurtosis(), round_to)
+        [data-testid="stSidebar"]::before {
+            content: "";
+            display: block;
+            height: 100px; /* Reduced height */
         }
-
-    summary = pd.DataFrame(summary_dict).transpose()
-
-    # Style the table (keeping the existing styling)
-    styled_summary = summary.style.set_properties(**{
-        'background-color': 'white',
-        'color': 'black',
-        'border-color': 'rgb(0, 62, 37)'
-    }).set_table_styles([
-        {'selector': 'th', 'props': [('background-color', 'rgb(0, 62, 37)'), ('color', 'white')]},
-        {'selector': 'tbody tr:nth-of-type(even)', 'props': [('background-color', 'rgba(0, 62, 37, 0.1)')]},
-        {'selector': 'tbody tr:last-of-type', 'props': [('border-bottom', '2px solid rgb(0, 62, 37)')]}
-    ]).format(precision=round_to)
-
-    # Convert styled DataFrame to HTML and remove the style block
-    styled_html = styled_summary.to_html()
-    styled_html = styled_html.split('</style>')[-1]  # Remove everything before and including </style>
-
-    # Add custom CSS to ensure the table fits within the Streamlit container
-    custom_css = """
-    <style>
-    table {
-        width: 100%;
-        border-collapse: collapse;
-    }
-    th, td {
-        text-align: right;
-        padding: 8px;
-        border: 1px solid rgb(0, 62, 37);
-    }
-    th {
-        background-color: rgb(0, 62, 37);
-        color: white;
-    }
-    tr:nth-of-type(even) {
-        background-color: rgba(0, 62, 37, 0.1);
-    }
-    tbody tr:last-of-type {
-        border-bottom: 2px solid rgb(0, 62, 37);
-    }
-    </style>
-    """
-
-    # Combine custom CSS with styled HTML table
-    final_html = custom_css + styled_html
-
-    # Display the styled table
-    st.markdown(final_html, unsafe_allow_html=True)
-
-# Updated function to create Features vs Time plot
-def create_features_vs_time(df, selected_features, time_column, sampling_rate):
-    if not selected_features:
-        st.warning("Please select at least one feature for the time series plot.")
-        return
-
-    colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEEAD', '#D4A5A5',
-              '#9B6B6B', '#E9967A', '#4682B4', '#6B8E23']  # Expanded color palette
-
-    fig = make_subplots(rows=len(selected_features), cols=1,
-                        shared_xaxes=True,
-                        subplot_titles=selected_features,
-                        vertical_spacing=0.05)  # Reduce spacing between subplots
-
-    for i, feature in enumerate(selected_features, start=1):
-        fig.add_trace(
-            go.Scatter(
-                x=df[time_column],
-                y=df[feature],
-                mode='lines',
-                name=feature,
-                line=dict(color=colors[i % len(colors)], width=2)
-            ),
-            row=i,
-            col=1
-        )
-
-        # Update y-axis titles
-        fig.update_yaxes(title_text=feature, row=i, col=1)
-
-    # Update layout with larger dimensions and better spacing
-    fig.update_layout(
-        height=400 * len(selected_features),  # Increased height per subplot
-        width=1200,  # Increased overall width
-        title_text='Features vs Time',
-        showlegend=True,
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=1.02,
-            xanchor="right",
-            x=1
-        ),
-        margin=dict(t=100, l=100, r=50, b=50)  # Adjusted margins
+        </style>
+        """,
+        unsafe_allow_html=True,
     )
 
-    st.plotly_chart(fig, use_container_width=True)
+def get_table_download_link(df, filename, text):
+    """Generate a download link for a pandas DataFrame."""
+    csv = df.to_csv(index=False)
+    b64 = base64.b64encode(csv.encode()).decode()  # some strings <-> bytes conversions necessary here
+    href = f'<a href="data:file/csv;base64,{b64}" download="{filename}">{text}</a>'
+    return href
 
-# Updated function to create Pressure Distribution Over Time Polar Plot with Plotly
-def create_pressure_distribution_polar_plot(df, pressure_column, time_column):
-    try:
-        # Check if the pressure column exists, if not, try to find a similar column
-        if pressure_column not in df.columns:
-            potential_columns = [col for col in df.columns if 'pressure' in col.lower() or 'druck' in col.lower()]
-            if potential_columns:
-                pressure_column = potential_columns[0]
-                st.warning(f"Original pressure column not found. Using '{pressure_column}' instead.")
-            else:
-                st.error(f"Could not find a suitable pressure column. Please check your data.")
-                return
+def display_statistics(df, revolution_col, pressure_col):
+    """Display statistics of RPM, Torque, and Pressure."""
+    st.subheader("Statistical Summary")
+    col1, col2, col3 = st.columns(3)
 
-        df[pressure_column] = pd.to_numeric(df[pressure_column], errors='coerce')
+    with col1:
+        st.write("RPM Statistics:")
+        st.write(df[revolution_col].describe())
 
-        # Normalize time to 360 degrees
-        df['normalized_time'] = (df[time_column] - df[time_column].min()) / (df[time_column].max() - df[time_column].min()) * 360
+    with col2:
+        st.write("Calculated Torque Statistics:")
+        st.write(df['Calculated torque [kNm]'].describe())
 
-        fig = go.Figure()
-        fig.add_trace(go.Scatterpolar(
-            r=df[pressure_column],
-            theta=df['normalized_time'],
-            mode='markers',
-            marker=dict(color='blue', size=5),
-            name='Pressure'
-        ))
+    with col3:
+        st.write("Working Pressure Statistics:")
+        st.write(df[pressure_col].describe())
 
-        max_pressure = df[pressure_column].max()
-        if pd.isna(max_pressure):
-            max_pressure = 1
+def display_explanation(anomaly_threshold):
+    """Display an explanation of the results."""
+    st.subheader("Understanding the Results")
+    st.write(f"""
+    This analysis provides insights into the performance of the machine:
 
-        fig.update_layout(
-            title='Pressure Distribution Over Time (Polar Plot)',
-            polar=dict(
-                radialaxis=dict(
-                    visible=True,
-                    range=[0, max_pressure * 1.1],
-                    showline=False,
-                    showgrid=True,
-                    gridcolor='lightgrey',
-                    tickfont=dict(size=10)
-                ),
-                angularaxis=dict(
-                    tickmode='array',
-                    tickvals=[0, 90, 180, 270],
-                    ticktext=['0°', '90°', '180°', '270°'],
-                    direction='clockwise',
-                    rotation=90
-                )
-            ),
-            showlegend=False,
-            template='plotly_white',
-            height=600,
-            width=600
-        )
-        st.plotly_chart(fig)
-    except Exception as e:
-        st.error(f"Error creating pressure distribution polar plot: {e}")
+    1. **Normal Data**: These are the typical operating points of the machine. They represent the standard working conditions and fall within expected ranges for revolution, torque, and pressure.
 
-def create_parameters_vs_chainage(df, selected_features, chainage_column, penetration_rates_available=False):
-    if not selected_features:
-        st.warning("Please select at least one feature for the chainage plot.")
-        return
+    2. **Anomalies**: These are instances where the working pressure exceeds the set threshold (currently set to {anomaly_threshold} bar). Anomalies might indicate:
+       - Unusual operating conditions
+       - Potential issues with the machine
+       - Extreme workloads
 
-    # Ensure the chainage column exists
-    if chainage_column not in df.columns:
-        st.error(f"Chainage column '{chainage_column}' not found in the dataset.")
-        return
+    3. **Outliers**: These are data points that fall significantly outside the normal range for either torque or RPM. Outliers may represent:
+       - Extreme operating conditions
+       - Measurement errors
+       - Temporary spikes in performance
 
-    # Sort the data by chainage column
-    df = df.sort_values(by=chainage_column)
+    The statistical summary shows:
+    - **Mean**: The average value, giving you a sense of the typical operating point.
+    - **Median (50%)**: The middle value when data is sorted, useful for understanding the central tendency without being affected by extreme values.
+    - **Standard Deviation (std)**: Measures the spread of the data. A larger standard deviation indicates more variability in the measurements.
+    - **Min and Max**: The lowest and highest values recorded, helping to understand the range of operation.
+    - **25%, 50%, 75% (Quartiles)**: These split the data into four equal parts, giving you an idea of the data's distribution.
 
-    colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEEAD', '#D4A5A5',
-              '#9B6B6B', '#E9967A', '#4682B4', '#6B8E23']
+    Understanding these statistics can help identify:
+    - Typical operating ranges
+    - Unusual patterns in machine operation
+    - Potential areas for optimization or maintenance
 
-    available_features = [f for f in selected_features if f in df.columns]
+    If you notice a high number of anomalies or outliers, or if the statistics show unexpected values, it may be worth investigating further or consulting with a technical expert for a more detailed analysis.
+    """)
+
+def main():
+    set_page_config()
+    set_background_color()
+    add_logo()
     
-    if not available_features:
-        st.warning("None of the selected features are available in the dataset.")
-        return
+    st.title("TorqueVision: Herrenknecht's Advanced Analysis App")
+    
+    # File uploaders for batch data
+    raw_data_file = st.file_uploader("Upload Raw Data (CSV or XLSX)", type=["csv", "xlsx"])
+    machine_specs_file = st.file_uploader("Upload Machine Specifications XLSX", type="xlsx")
 
-    fig = make_subplots(rows=len(available_features), cols=1,
-                        shared_xaxes=True,
-                        subplot_titles=available_features,
-                        vertical_spacing=0.1)  # Increased spacing between subplots
-
-    for i, feature in enumerate(available_features, start=1):
+    # Load machine specs if available
+    if machine_specs_file is not None:
         try:
-            y_data = df[feature]
-            feature_name = feature
-
-            fig.add_trace(
-                go.Scatter(
-                    x=df[chainage_column],
-                    y=y_data,
-                    mode='lines',
-                    name=feature_name,
-                    line=dict(color=colors[i % len(colors)], width=2)
-                ),
-                row=i,
-                col=1
-            )
+            machine_specs = load_machine_specs(machine_specs_file)
+            machine_types = machine_specs['Projekt'].unique()
+            selected_machine = st.sidebar.selectbox("Select Machine Type", machine_types)
             
-            # Plot Penetration Rates if available
-            if feature == 'Penetration Rate [mm/rev]' and penetration_rates_available:
-                fig.add_trace(
-                    go.Scatter(
-                        x=df[chainage_column],
-                        y=df['Penetration Rate [mm/rev]'],
-                        mode='lines',
-                        name='Calculated Penetration Rate',
-                        line=dict(color='blue', dash='dash')
-                    ),
-                    row=i,
-                    col=1
-                )
-            elif feature == 'Sensor-based Penetration Rate' and penetration_rates_available:
-                fig.add_trace(
-                    go.Scatter(
-                        x=df[chainage_column],
-                        y=df['Sensor-based Penetration Rate'],
-                        mode='lines',
-                        name='Sensor-based Penetration Rate',
-                        line=dict(color='green', dash='dot')
-                    ),
-                    row=i,
-                    col=1
-                )
-
-            # Update y-axis titles with more space
-            fig.update_yaxes(
-                title_text=feature_name, 
-                row=i, 
-                col=1,
-                title_standoff=40  # Increased standoff to prevent overlap
+            machine_params = get_machine_params(machine_specs, selected_machine)
+            
+            # Convert the machine parameters to a DataFrame
+            params_df = pd.DataFrame([machine_params])   
+            # Create a styled HTML table with thicker borders
+            styled_table = params_df.style.set_table_styles([
+                {'selector': 'th', 'props': [('border', '2px solid black'), ('padding', '5px')]},
+                {'selector': 'td', 'props': [('border', '2px solid black'), ('padding', '5px')]},
+                {'selector': '', 'props': [('border-collapse', 'collapse')]}
+            ]).to_html()
+            
+            # Remove the unwanted CSS that appears above the table
+            styled_table = styled_table.split('</style>')[-1]
+            
+            # Display the styled table
+            st.markdown(
+                f"""
+                <style>
+                table {{
+                    border-collapse: collapse;
+                    margin: 25px 0;
+                    font-size: 0.9em;
+                    font-family: sans-serif;
+                    min-width: 400px;
+                    box-shadow: 0 0 20px rgba(0, 0, 0, 0.15);
+                }}
+                table thead tr {{
+                    background-color: rgb(0, 62, 37);
+                    color: #ffffff;
+                    text-align: left;
+                }}
+                table th,
+                table td {{
+                    padding: 12px 15px;
+                    border: 2px solid black;
+                }}
+                table tbody tr {{
+                    border-bottom: 1px solid #dddddd;
+                }}
+                table tbody tr:nth-of-type(even) {{
+                    background-color: #f3f3f3;
+                }}
+                table tbody tr:last-of-type {{
+                    border-bottom: 2px solid rgb(0, 62, 37);
+                }}
+                </style>
+                {styled_table}
+                """,
+                unsafe_allow_html=True
             )
         except Exception as e:
-            st.warning(f"Error plotting feature '{feature}': {e}")
-
-    # Update layout with adjusted dimensions
-    fig.update_layout(
-        height=300 * len(available_features),  # Dynamic height based on number of features
-        width=1200,
-        title_text=f'Parameters vs Chainage',
-        showlegend=True,
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=1.02,
-            xanchor="right",
-            x=1
-        ),
-        margin=dict(t=100, l=150, r=50, b=50)  # Increased left margin for y-axis labels
-    )
-
-    # Update x-axis title only for the bottom subplot
-    fig.update_xaxes(title_text='Chainage [mm]', row=len(available_features), col=1)
-
-    st.plotly_chart(fig, use_container_width=True)
-
-# Updated function to create multi-axis box plots with additional features
-def create_multi_axis_box_plots(df, selected_features):
-    if not selected_features:
-        st.warning("Please select at least one feature for the box plots.")
+            st.error(f"An error occurred while processing the machine specifications: {str(e)}")
+            st.stop()
+    else:
+        st.warning("Please upload Machine Specifications XLSX file.")
         return
-
-    try:
-        fig = make_subplots(rows=1, cols=1, specs=[[{"secondary_y": False}]])
-        colors = ['#0000cd', '#6495ed', '#4b0082', '#ff00ff']  # Corresponding colors
-
-        for i, feature in enumerate(selected_features):
-            fig.add_trace(go.Box(y=df[feature], name=feature, marker_color=colors[i % len(colors)]))
-
-        fig.update_layout(
-            title='Box Plots of Key Parameters',
-            height=600,
-            width=1000,
-            showlegend=True,
-            boxmode='group'
-        )
-        st.plotly_chart(fig)
-    except Exception as e:
-        st.error(f"Error creating box plots: {e}")
-
-# Updated function to create multi-axis violin plots with added customization
-def create_multi_axis_violin_plots(df, selected_features):
-    if not selected_features:
-        st.warning("Please select at least one feature for the violin plots.")
-        return
-
-    try:
-        fig = make_subplots(rows=1, cols=1, specs=[[{"secondary_y": False}]])
-        colors = ['#0000cd', '#6495ed', '#4b0082', '#ff00ff']  # Corresponding colors
-
-        for i, feature in enumerate(selected_features):
-            fig.add_trace(go.Violin(y=df[feature], name=feature, box_visible=True, meanline_visible=True, fillcolor=colors[i % len(colors)]))
-
-        fig.update_layout(
-            title='Violin Plots of Key Parameters',
-            height=600,
-            width=1000,
-            showlegend=True,
-            violinmode='group'
-        )
-        st.plotly_chart(fig)
-    except Exception as e:
-        st.error(f"Error creating violin plots: {e}")
-
-def handle_chainage_filtering_and_averaging(df, chainage_column, aggregation):
-    try:
-        st.sidebar.header("Chainage Filtering")
-
-        # User input for chainage range
-        min_chainage = float(df[chainage_column].min())
-        max_chainage = float(df[chainage_column].max())
-        chainage_range = st.sidebar.slider("Select Chainage Range (mm)", min_chainage, max_chainage, (min_chainage, max_chainage), step=(max_chainage - min_chainage)/100)
-
-        # Filter the DataFrame based on selected range
-        filtered_df = df[(df[chainage_column] >= chainage_range[0]) & (df[chainage_column] <= chainage_range[1])]
-
-        st.sidebar.write(f"Selected Chainage Range: {chainage_range[0]} - {chainage_range[1]} mm")
-
-        # Aggregate data based on aggregation interval
-        if aggregation in ['1S', '5S', '10S', '30S']:
-            # Assuming chainage increases with time, sort by chainage
-            filtered_df = filtered_df.sort_values(by=chainage_column)
-            # Resample based on chainage by grouping
-            # Since chainage isn't datetime, binning is necessary
-            bins = np.arange(filtered_df[chainage_column].min(), filtered_df[chainage_column].max(), step=10)  # Example step of 10 mm
-            filtered_df['chainage_bin'] = pd.cut(filtered_df[chainage_column], bins=bins, include_lowest=True)
-            aggregated_df = filtered_df.groupby('chainage_bin').mean().reset_index()
-            aggregated_df[chainage_column] = aggregated_df['chainage_bin'].apply(lambda x: x.mid)
-            return aggregated_df
-        elif aggregation in ['1T', '5T', '10T', '30T']:
-            # For chainage, binning is similar
-            filtered_df = filtered_df.sort_values(by=chainage_column)
-            bins = np.arange(filtered_df[chainage_column].min(), filtered_df[chainage_column].max(), step=50)  # Example step of 50 mm
-            filtered_df['chainage_bin'] = pd.cut(filtered_df[chainage_column], bins=bins, include_lowest=True)
-            aggregated_df = filtered_df.groupby('chainage_bin').mean().reset_index()
-            aggregated_df[chainage_column] = aggregated_df['chainage_bin'].apply(lambda x: x.mid)
-            return aggregated_df
-        else:
-            st.warning("Unknown aggregation interval. Skipping aggregation.")
-            return filtered_df
-    except Exception as e:
-        st.error(f"Error in chainage filtering and averaging: {e}")
-        return df
-
-# Updated function to create thrust force plots
-def create_thrust_force_plots(df, advance_rate_col):
-    try:
-        # Identify thrust force column
-        thrust_force_col = next((col for col in df.columns 
-                           if any(kw in col.lower() for kw in [
-                               'thrust force', 'vorschubkraft', 'kraft', 'kraft_max', 
-                               'gesamtkraft', 'gesamtkraft_stz', 'gesamtkraft_vtp', 
-                               'force'])), 
-                          None)
         
-        if thrust_force_col is None:
-            st.warning("Thrust force column not found in the dataset.")
-            return
+    # Sidebar for user inputs
+    st.sidebar.header("Parameter Settings")
+    P_max = st.sidebar.number_input("Maximum power (kW)", value=132.0, min_value=1.0, max_value=500.0)
+    nu = st.sidebar.number_input("Efficiency coefficient", value=0.7, min_value=0.1, max_value=1.0)
+    anomaly_threshold = st.sidebar.number_input("Anomaly threshold (bar)", value=250, min_value=100, max_value=500)
 
-        # Create subplots
-        fig = make_subplots(rows=3, cols=1, 
-                           subplot_titles=("Thrust Force vs Penetration Rate", 
-                                         "Thrust Force vs Average Speed", 
-                                         "Thrust Force vs Advance Rate"),
-                           vertical_spacing=0.1)
-
-        # Plot 1: Thrust Force vs Penetration Rate
-        if 'Penetration Rate [mm/rev]' in df.columns:
-            mask = df['Penetration Rate [mm/rev]'].notna()
-            fig.add_trace(go.Scatter(
-                x=df.loc[mask, 'Penetration Rate [mm/rev]'], 
-                y=df.loc[mask, thrust_force_col], 
-                mode='markers', 
-                name='vs Penetration Rate', 
-                marker=dict(color='blue', size=5)
-            ), row=1, col=1)
-        else:
-            st.warning("Penetration Rate [mm/rev] column not found in the dataset.")
-
-        # Plot 2: Thrust Force vs Average Speed
-        if 'Average Speed (mm/min)' in df.columns:
-            mask = df['Average Speed (mm/min)'].notna()
-            fig.add_trace(go.Scatter(
-                x=df.loc[mask, 'Average Speed (mm/min)'], 
-                y=df.loc[mask, thrust_force_col], 
-                mode='markers', 
-                name='vs Average Speed',
-                marker=dict(color='green', size=5)
-            ), row=2, col=1)
-        else:
-            st.warning("Average Speed (mm/min) column not found in the dataset.")
-
-        # Plot 3: Thrust Force vs Selected Advance Rate
-        if advance_rate_col and advance_rate_col in df.columns:
-            mask = df[advance_rate_col].notna()
-            fig.add_trace(go.Scatter(
-                x=df.loc[mask, advance_rate_col], 
-                y=df.loc[mask, thrust_force_col], 
-                mode='markers', 
-                name='vs Advance Rate',
-                marker=dict(color='red', size=5)
-            ), row=3, col=1)
-        else:
-            st.warning("Selected advance rate column not available for plotting.")
-
-        # Update layout with improved styling
-        fig.update_layout(
-            height=1200, 
-            width=800, 
-            title_text="Thrust Force Relationships",
-            showlegend=True,
-            template='plotly_white'
-        )
+    if raw_data_file is not None:
+        # Load data with optimization for performance
+        file_type = raw_data_file.name.split('.')[-1].lower()
+        df = load_data(raw_data_file, file_type)
         
-        # Update axes labels with proper units
-        fig.update_xaxes(title_text="Penetration Rate [mm/rev]", row=1, col=1)
-        fig.update_xaxes(title_text="Average Speed [mm/min]", row=2, col=1)
-        fig.update_xaxes(title_text=advance_rate_col if advance_rate_col else "Advance Rate [mm/min]", row=3, col=1)
-        
-        for i in range(1, 4):
-            fig.update_yaxes(title_text="Thrust Force [kN]", row=i, col=1)
+        if df is not None:
+            # Find sensor columns
+            sensor_columns = find_sensor_columns(df)
+            
+            # Allow user to select columns
+            pressure_col = st.selectbox("Select pressure column", options=df.columns, index=df.columns.get_loc(sensor_columns.get('pressure', df.columns[0])))
+            revolution_col = st.selectbox("Select revolution column", options=df.columns, index=df.columns.get_loc(sensor_columns.get('revolution', df.columns[0])))
+            
+            if pressure_col and revolution_col:
+                # Proceed with data processing and visualization
+                df[revolution_col] = pd.to_numeric(df[revolution_col], errors='coerce')
+                df[pressure_col] = pd.to_numeric(df[pressure_col], errors='coerce')
+                df = df.dropna(subset=[revolution_col, pressure_col])
 
-        st.plotly_chart(fig)
-    except Exception as e:
-        st.error(f"Error creating thrust force plots: {e}")
 
-def safe_selectbox(label, options, suggested_option):
-    try:
-        if suggested_option and suggested_option in options:
-            index = options.index(suggested_option)
-        else:
-            index = 0  # Default to 'None'
-    except ValueError:
-        index = 0  # Default to 'None' if suggested_option is not in options
-    return st.sidebar.selectbox(label, options, index=index)
+                # RPM Statistics
+                rpm_stats = df[revolution_col].describe()
+                rpm_max_value = rpm_stats['max']
+                st.sidebar.write(f"Recommended value for x-axis based on the Max RPM in Data: {rpm_max_value:.2f}")
 
-# Main function
-def main():
-    try:
-        set_background_color()
-        add_logo()
+                # Allow user to set x_axis_max
+                x_axis_max = st.sidebar.number_input("X-axis maximum", value=float(rpm_max_value), min_value=1.0, max_value=float(rpm_max_value * 1.2))
 
-        st.title("Herrenknecht Hard Rock Data Analysis App")
+                # Filter data points between n2 and n1 rpm
+                df = df[(df[revolution_col] >= machine_params['n2']) & (df[revolution_col] <= machine_params['n1'])]
 
-        st.sidebar.header("Data Upload & Analysis")
+                # Calculate torque
+                def calculate_torque_wrapper(row):
+                    working_pressure = row[pressure_col]
+                    current_speed = row[revolution_col]
 
-        uploaded_file = st.sidebar.file_uploader("Machine Data (CSV/Excel)", type=['csv', 'xlsx'])
-        rock_strength_file = st.sidebar.file_uploader("Rock Strength Data (CSV/Excel)", type=['csv', 'xlsx'])
+                    if current_speed < machine_params['n1']:
+                        torque = working_pressure * machine_params['torque_constant']
+                    else:
+                        torque = (machine_params['n1'] / current_speed) * machine_params['torque_constant'] * working_pressure
 
-        if uploaded_file is not None:
-            df = load_data(uploaded_file)
+                    return round(torque, 2)
 
-            if df is not None:
-                working_pressure_cols, revolution_cols, advance_rate_cols = identify_special_columns(df)
+                df['Calculated torque [kNm]'] = df.apply(calculate_torque_wrapper, axis=1)
 
-                suggested_working_pressure = suggest_column(df, ['working pressure', 'arbeitsdruck', 'pressure', 'druck', 'arbdr', 'sr_arbdr','SR_Arbdr'])
-                suggested_revolution = suggest_column(df, ['revolution', 'drehzahl', 'rpm', 'drehz', 'sr_drehz', 'SR_Drehz'])
-                suggested_advance_rate = suggest_column(df, ['advance rate', 'vortrieb', 'vorschub','VTgeschw','geschw'])
+                # Calculate whiskers and outliers for torque
+                torque_lower_whisker, torque_upper_whisker, torque_outliers = calculate_whisker_and_outliers(df['Calculated torque [kNm]'])
+                rpm_lower_whisker, rpm_upper_whisker, rpm_outliers = calculate_whisker_and_outliers(df[revolution_col])
 
-                working_pressure_col = safe_selectbox(
-                    "Select Working Pressure Column",
-                    ['None'] + working_pressure_cols,
-                    suggested_working_pressure
-                )
-                revolution_col = safe_selectbox(
-                    "Select Revolution Column",
-                    ['None'] + revolution_cols,
-                    suggested_revolution
-                )
-                advance_rate_col = safe_selectbox(
-                    "Select Advance Rate Column",
-                    ['None'] + advance_rate_cols,
-                    suggested_advance_rate
+                # Anomaly detection based on working pressure
+                df['Is_Anomaly'] = df[pressure_col] >= anomaly_threshold
+
+                # Function to calculate M max Vg2
+                def M_max_Vg2(rpm):
+                    return np.minimum(machine_params['M_max_Vg1'], (P_max * 60 * nu) / (2 * np.pi * rpm))
+
+                # Calculate the elbow points for the max and continuous torque
+                elbow_rpm_max = (P_max * 60 * nu) / (2 * np.pi * machine_params['M_max_Vg1'])
+                elbow_rpm_cont = (P_max * 60 * nu) / (2 * np.pi * machine_params['M_cont_value'])
+
+                # Generate RPM values for the torque curve
+                rpm_curve = np.linspace(0.1, machine_params['n1'], 1000)  # Avoid division by zero
+
+                # Calculate the y-value where vertical lines should stop
+                max_y_value = max(M_max_Vg2(elbow_rpm_max), M_max_Vg2(elbow_rpm_cont), M_max_Vg2(machine_params['n1']))
+                
+                # Create Plotly figure
+                fig = make_subplots(rows=1, cols=1)
+                
+                # Plot torque curves
+                fig.add_trace(go.Scatter(x=rpm_curve[rpm_curve <= elbow_rpm_cont],
+                                         y=np.full_like(rpm_curve[rpm_curve <= elbow_rpm_cont], machine_params['M_cont_value']),
+                                         mode='lines', name='M cont Max [kNm]', line=dict(color='green', width=2)))
+                
+                fig.add_trace(go.Scatter(x=rpm_curve[rpm_curve <= elbow_rpm_max],
+                                         y=np.full_like(rpm_curve[rpm_curve <= elbow_rpm_max], machine_params['M_max_Vg1']),
+                                         mode='lines', name='M max Vg1 [kNm]', line=dict(color='red', width=2)))
+                
+                fig.add_trace(go.Scatter(x=rpm_curve[rpm_curve <= machine_params['n1']],
+                                         y=M_max_Vg2(rpm_curve[rpm_curve <= machine_params['n1']]),
+                                         mode='lines', name='M max Vg2 [kNm]', line=dict(color='red', width=2, dash='dash')))
+                
+                # Add truncated vertical lines at elbow points
+                fig.add_shape(type="line", x0=elbow_rpm_max, y0=0, x1=elbow_rpm_max, y1=M_max_Vg2(elbow_rpm_max),
+                              line=dict(color="purple", width=1, dash="dot"))
+                fig.add_shape(type="line", x0=elbow_rpm_cont, y0=0, x1=elbow_rpm_cont, y1=M_max_Vg2(elbow_rpm_cont),
+                              line=dict(color="orange", width=1, dash="dot"))
+                fig.add_shape(type="line", x0=machine_params['n1'], y0=0, x1=machine_params['n1'], y1=M_max_Vg2(machine_params['n1']),
+                              line=dict(color="black", width=1, dash="dash"))
+
+
+
+                # Separate normal and anomaly data
+                normal_data = df[~df['Is_Anomaly']]
+                anomaly_data = df[df['Is_Anomaly']]
+
+                # Separate outlier data
+                torque_outlier_data = df[df['Calculated torque [kNm]'].isin(torque_outliers)]
+                rpm_outlier_data = df[df[revolution_col].isin(rpm_outliers)]
+
+                # Plot data points
+                fig.add_trace(go.Scatter(x=normal_data[revolution_col], y=normal_data['Calculated torque [kNm]'],
+                                         mode='markers', name='Normal Data',
+                                         marker=dict(color=normal_data['Calculated torque [kNm]'], colorscale='Viridis', size=8)))
+
+                fig.add_trace(go.Scatter(x=anomaly_data[revolution_col], y=anomaly_data['Calculated torque [kNm]'],
+                                         mode='markers', name=f'Anomaly (Pressure ≥ {anomaly_threshold} bar)',
+                                         marker=dict(color='red', symbol='x', size=10)))
+
+                fig.add_trace(go.Scatter(x=torque_outlier_data[revolution_col], y=torque_outlier_data['Calculated torque [kNm]'],
+                                         mode='markers', name='Torque Outliers',
+                                         marker=dict(color='orange', symbol='diamond', size=10)))
+
+                fig.add_trace(go.Scatter(x=rpm_outlier_data[revolution_col], y=rpm_outlier_data['Calculated torque [kNm]'],
+                                         mode='markers', name='RPM Outliers',
+                                         marker=dict(color='purple', symbol='square', size=10)))
+
+                # Add horizontal lines for the torque whiskers
+                fig.add_hline(y=torque_upper_whisker, line_dash="dash", line_color="gray", annotation_text="Torque Upper Whisker")
+                fig.add_hline(y=torque_lower_whisker, line_dash="dot", line_color="gray", annotation_text="Torque Lower Whisker")
+
+                # Set plot layout
+                fig.update_layout(
+                    title=f'{selected_machine} - Torque Analysis',
+                    xaxis_title='Revolution [1/min]',
+                    yaxis_title='Torque [kNm]',
+                    xaxis=dict(range=[0, x_axis_max]),
+                    yaxis=dict(range=[0, max(60, df['Calculated torque [kNm]'].max() * 1.1)]),
+                    legend=dict(orientation="h", yanchor="bottom", y=-0.3, xanchor="center", x=0.5),
+                    height=600
                 )
 
-                distance_columns = get_distance_columns(df)
-                if not distance_columns:
-                    distance_columns = df.columns.tolist()
-                selected_distance = st.sidebar.selectbox("Select distance/chainage column", distance_columns)
+                st.plotly_chart(fig, use_container_width=True)
 
-                n1 = st.sidebar.number_input("Enter n1 value (revolution 1/min)", min_value=0.0, value=1.0, step=0.1)
-                torque_constant = st.sidebar.number_input("Enter torque constant", min_value=0.0, value=1.0, step=0.1)
+                # Display the statistical summary
+                display_statistics(df, revolution_col, pressure_col)
 
-                if working_pressure_col != 'None' and revolution_col != 'None':
-                    df = calculate_derived_features(df, working_pressure_col, revolution_col, n1, torque_constant, selected_distance)
-                    
-                    if 'Average Speed (mm/min)' in df.columns and revolution_col != 'None':
-                        df['Penetration Rate [mm/rev]'] = df.apply(
-                            lambda row: calculate_penetration_rate(row, revolution_col), axis=1
-                        )
+                # Provide an explanation of the analysis
+                display_explanation(anomaly_threshold)
 
-                df_viz = rename_columns(df.copy(), working_pressure_col, revolution_col, selected_distance, advance_rate_col)
+                # Download buttons for analysis results
+                st.sidebar.markdown("## Download Results")
+                stats_df = pd.DataFrame({
+                    'RPM': df[revolution_col].describe(),
+                    'Calculated Torque': df['Calculated torque [kNm]'].describe(),
+                    'Working Pressure': df[pressure_col].describe()
+                })
+                st.sidebar.markdown(get_table_download_link(stats_df, "statistical_analysis.csv", "Download Statistical Analysis"), unsafe_allow_html=True)
 
-                all_features = df_viz.columns.tolist()
-                
-                time_column = get_time_column(df_viz)
-
-                options = ['Statistical Summary', 'Parameters vs Chainage', 'Box Plots', 'Violin Plots', 'Thrust Force Plots', 'Correlation Heatmap']
-                if time_column:
-                    options.extend(['Features vs Time', 'Pressure Distribution'])
-                if rock_strength_file:
-                    options.append('Rock Strength Comparison')
-
-                selected_option = st.sidebar.radio("Choose visualization", options)
-
-                if selected_option not in ['Pressure Distribution', 'Thrust Force Plots']:
-                    default_features = []
-                    if 'Calculated torque [kNm]' in all_features:
-                        default_features.append('Calculated torque [kNm]')
-                    if 'Average Speed (mm/min)' in all_features:
-                        default_features.append('Average Speed (mm/min)')
-                    if 'Penetration Rate [mm/rev]' in all_features:
-                        default_features.append('Penetration Rate [mm/rev]')
-                    
-                    selected_features = st.sidebar.multiselect(
-                        "Select features for analysis",
-                        all_features,
-                        default=default_features
-                    )
-
-                st.subheader(f"Visualization: {selected_option}")
-
-                if selected_option == 'Rock Strength Comparison':
-                    rock_df = None
-                    if rock_strength_file:
-                        rock_strength_data = read_rock_strength_data(rock_strength_file)
-                        if rock_strength_data is not None:
-                            rock_df = preprocess_rock_strength_data(rock_strength_data)
-                            rock_type = st.sidebar.selectbox("Select Rock Type", rock_df.index)
-    
-                            if rock_df is not None and rock_type and selected_features:
-                                fig = create_rock_strength_comparison_chart(df_viz, rock_df, rock_type, selected_features)
-                                if fig is not None:
-                                    st.plotly_chart(fig)
-                            else:
-                                st.warning("Please ensure you've selected a rock type and at least one machine parameter for comparison.")
-                        else:
-                            st.warning("Error processing rock strength data. Please check your file.")
-                    else:
-                        st.warning("Please upload rock strength data to use this visualization.")
-                
-                elif selected_option == 'Thrust Force Plots':
-                    create_thrust_force_plots(
-                        df_viz, 
-                        'Advance rate [mm/min]' if advance_rate_col != 'None' else None
-                    )
-                
-                elif selected_option == 'Correlation Heatmap':
-                    if selected_features and len(selected_features) > 1:
-                        create_correlation_heatmap(df_viz, selected_features)
-                    else:
-                        st.warning("Please select at least two features for correlation analysis.")
-                elif selected_option == 'Statistical Summary':
-                    if selected_features:
-                        create_statistical_summary(df_viz, selected_features)
-                    else:
-                        st.warning("Please select features for statistical analysis.")
-                elif selected_option == 'Features vs Time' and time_column:
-                    if selected_features:
-                        # Determine sampling rate based on user input or auto detection
-                        sampling_rate = st.sidebar.selectbox(
-                            "Select Data Sampling Rate",
-                            ['Auto Detect', 'Milliseconds', 'Seconds', 'Minutes']
-                        )
-                        
-                        if sampling_rate == 'Auto Detect':
-                            # Automatically determine based on time differences
-                            df_viz = df_viz.sort_values(by=time_column)
-                            df_viz['time_diff'] = df_viz[time_column].diff().dt.total_seconds()
-                            average_sampling_interval = df_viz['time_diff'].median()
-                            st.sidebar.write(f"Detected average sampling interval: {average_sampling_interval} seconds")
-                            
-                            if average_sampling_interval < 1:
-                                aggregation = '1S'  # Every second
-                            else:
-                                aggregation = '1T'  # Every minute
-                        else:
-                            if sampling_rate == 'Milliseconds':
-                                aggregation = '1S'  # Aggregate every second
-                            elif sampling_rate == 'Seconds':
-                                aggregation = '1T'  # Aggregate every minute
-                            else:
-                                aggregation = '1T'  # Default to minute
-
-                        # Aggregate data based on selected interval
-                        if aggregation.startswith('1S'):
-                            agg_interval = '1S'
-                        elif aggregation.startswith('1T'):
-                            agg_interval = '1T'
-                        else:
-                            agg_interval = '1S'  # Default
-
-                        try:
-                            df_viz = df_viz.set_index(time_column)
-                            df_viz = df_viz.resample(agg_interval).mean().reset_index()
-                            st.sidebar.write(f"Data aggregated every {agg_interval}")
-                        except Exception as e:
-                            st.sidebar.error(f"Error parsing time column during aggregation: {e}")
-                            df_viz = df_viz.reset_index()
-
-                        create_features_vs_time(df_viz, selected_features, time_column, sampling_rate)
-                    else:
-                        st.warning("Please select features to visualize over time.")
-                elif selected_option == 'Pressure Distribution' and time_column:
-                    if working_pressure_col and working_pressure_col != 'None':
-                        renamed_pressure_col = 'Working pressure [bar]'
-                        create_pressure_distribution_polar_plot(df_viz, renamed_pressure_col, time_column)
-                    else:
-                        st.warning("Please select a valid working pressure column.")
-                elif selected_option == 'Parameters vs Chainage':
-                    if selected_features:
-                        # **Enhancement 1: Chainage Filtering & Data Averaging Based on Sampling Rate**
-                        st.sidebar.header("Chainage Filtering & Data Averaging")
-    
-                        # Determine sampling rate from Aggregation
-                        if 'time_diff' in df_viz.columns:
-                            # Remove 'time_diff' if exists from previous steps
-                            df_viz = df_viz.drop(columns=['time_diff'])
-
-                        # Chainage Filtering and Averaging
-                        df_viz = handle_chainage_filtering_and_averaging(df_viz, 'Chainage [mm]', aggregation)
-    
-                        create_parameters_vs_chainage(df_viz, selected_features, 'Chainage [mm]', penetration_rates_available=('Sensor-based Penetration Rate' in df_viz.columns))
-                    else:
-                        st.warning("Please select features to visualize against chainage.")
-                elif selected_option == 'Box Plots':
-                    if selected_features:
-                        create_multi_axis_box_plots(df_viz, selected_features)
-                    else:
-                        st.warning("Please select features for box plot analysis.")
-                elif selected_option == 'Violin Plots':
-                    if selected_features:
-                        create_multi_axis_violin_plots(df_viz, selected_features)
-                    else:
-                        st.warning("Please select features for violin plot analysis.")
-
-                if st.sidebar.button("Download Processed Data"):
-                    csv = df_viz.to_csv(index=False)
-                    b64 = base64.b64encode(csv.encode()).decode()
-                    href = f'<a href="data:file/csv;base64,{b64}" download="processed_data.csv">Download Processed CSV File</a>'
-                    st.sidebar.markdown(href, unsafe_allow_html=True)
-
-            else:
-                st.error("Error loading the data. Please check your file format.")
-    except Exception as e:
-        st.error(f"An unexpected error occurred in the main function: {str(e)}")
-
-    st.markdown("---")
-    st.markdown("© 2024 Herrenknecht AG. All rights reserved.")
-    st.markdown("**Created by Kursat Kilic - Geotechnical Digitalization**")
-
-def suggest_column(df, keywords):
-    for kw in keywords:
-        for col in df.columns:
-            if kw.lower() in col.lower():
-                return col
-    return None
+    else:
+        st.info("Please upload a Raw Data file to begin the analysis.")
 
 if __name__ == "__main__":
     main()
