@@ -3,9 +3,6 @@ import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-import seaborn as sns
-import matplotlib.pyplot as plt
-import io
 import base64
 
 # Set page config at the very beginning
@@ -179,7 +176,7 @@ def calculate_derived_features(df, working_pressure_col, revolution_col, n1, tor
             df['Average Speed (mm/min)'] = (df['Distance_Diff'] / df['Time_Diff']) * 60  # Convert to mm/min
             
             if revolution_col is not None:
-                df['Calculated Penetration Rate [mm/rev]'] = df['Average Speed (mm/min)'] / df[revolution_col]
+                df['Penetration Rate [mm/rev]'] = df['Average Speed (mm/min)'] / df[revolution_col]
         
         return df
             
@@ -219,80 +216,17 @@ def safe_selectbox(label, options, suggested_option):
         index = 0  # Default to 'None' if suggested_option is not in options
     return st.sidebar.selectbox(label, options, index=index)
 
-# Function to handle chainage filtering and averaging
-def handle_chainage_filtering_and_averaging(df, chainage_column):
+# Function to handle data averaging based on user-specified intervals
+def average_data(df, time_column, averaging_interval):
     try:
-        st.sidebar.header("Chainage Filtering & Averaging")
-
-        # Ensure chainage_column is numeric
-        df[chainage_column] = pd.to_numeric(df[chainage_column], errors='coerce')
-
-        # User input for chainage range
-        min_chainage = float(df[chainage_column].min())
-        max_chainage = float(df[chainage_column].max())
-        chainage_range = st.sidebar.slider("Select Chainage Range (mm)", min_chainage, max_chainage, (min_chainage, max_chainage))
-
-        # Filter the DataFrame based on selected range
-        filtered_df = df[(df[chainage_column] >= chainage_range[0]) & (df[chainage_column] <= chainage_range[1])]
-
-        st.sidebar.write(f"Selected Chainage Range: {chainage_range[0]} - {chainage_range[1]} mm")
-
-        # User input for averaging interval
-        averaging_units = {'Millimeters (mm)': 1, 'Centimeters (cm)': 10, 'Meters (m)': 1000}
-        selected_unit = st.sidebar.selectbox("Select Averaging Unit", list(averaging_units.keys()))
-        averaging_interval = st.sidebar.number_input(f"Averaging Interval in {selected_unit}", min_value=1, value=10)
-        interval_in_mm = averaging_interval * averaging_units[selected_unit]
-
-        # Aggregate data based on averaging interval
-        bins = np.arange(filtered_df[chainage_column].min(), filtered_df[chainage_column].max() + interval_in_mm, interval_in_mm)
-        filtered_df['Chainage Bin'] = pd.cut(filtered_df[chainage_column], bins=bins, include_lowest=True)
-
-        numeric_columns = filtered_df.select_dtypes(include=[np.number]).columns.tolist()
-        numeric_columns.append('Chainage Bin')  # Ensure 'Chainage Bin' is included in the groupby
-
-        aggregated_df = filtered_df.groupby('Chainage Bin')[numeric_columns].mean().reset_index()
-        aggregated_df[chainage_column] = aggregated_df['Chainage Bin'].apply(lambda x: x.mid)
-
-        return aggregated_df
-    except Exception as e:
-        st.error(f"Error in chainage filtering and averaging: {e}")
-        return df
-
-# Function to handle time filtering and averaging
-def handle_time_filtering_and_averaging(df, time_column):
-    try:
-        st.sidebar.header("Time Filtering & Averaging")
-
-        # Ensure time_column is datetime
         df[time_column] = pd.to_datetime(df[time_column], errors='coerce')
-
-        # User input for time range
-        min_time = df[time_column].min()
-        max_time = df[time_column].max()
-        time_range = st.sidebar.slider("Select Time Range", min_value=min_time, max_value=max_time, value=(min_time, max_time), format="YYYY-MM-DD HH:mm:ss")
-
-        # Filter the DataFrame based on selected time range
-        filtered_df = df[(df[time_column] >= time_range[0]) & (df[time_column] <= time_range[1])]
-
-        st.sidebar.write(f"Selected Time Range: {time_range[0]} - {time_range[1]}")
-
-        # User input for averaging interval
-        averaging_units = {'Seconds': 'S', 'Minutes': 'T', 'Hours': 'H'}
-        selected_unit = st.sidebar.selectbox("Select Averaging Unit", list(averaging_units.keys()))
-        averaging_interval = st.sidebar.number_input(f"Averaging Interval in {selected_unit}", min_value=1, value=1)
-        interval = f"{averaging_interval}{averaging_units[selected_unit]}"
-
-        # Aggregate data based on averaging interval
-        filtered_df = filtered_df.set_index(time_column)
-        numeric_columns = filtered_df.select_dtypes(include=[np.number]).columns.tolist()
-
-        aggregated_df = filtered_df[numeric_columns].resample(interval).mean().reset_index()
-
-        return aggregated_df
+        df = df.set_index(time_column)
+        numeric_columns = df.select_dtypes(include=[np.number]).columns.tolist()
+        averaged_df = df[numeric_columns].resample(averaging_interval).mean().reset_index()
+        return averaged_df
     except Exception as e:
-        st.error(f"Error in time filtering and averaging: {e}")
-        return df
-
+        st.error(f"Error averaging data: {e}")
+        return df.reset_index()
 
 # Function to create Parameters vs Chainage plot
 def create_parameters_vs_chainage(df, selected_features, chainage_column):
@@ -358,6 +292,50 @@ def create_parameters_vs_chainage(df, selected_features, chainage_column):
 
     st.plotly_chart(fig, use_container_width=True)
 
+# Function to create Features vs Time plot
+def create_features_vs_time(df, selected_features, time_column):
+    if not selected_features:
+        st.warning("Please select at least one feature for the time series plot.")
+        return
+
+    colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEEAD', '#D4A5A5',
+              '#9B6B6B', '#E9967A', '#4682B4', '#6B8E23']
+
+    fig = make_subplots(rows=len(selected_features), cols=1,
+                        shared_xaxes=True,
+                        subplot_titles=selected_features,
+                        vertical_spacing=0.05)
+
+    for i, feature in enumerate(selected_features, start=1):
+        fig.add_trace(
+            go.Scatter(
+                x=df[time_column],
+                y=df[feature],
+                mode='lines+markers',
+                name=feature,
+                line=dict(color=colors[i % len(colors)], width=2)
+            ),
+            row=i,
+            col=1
+        )
+
+        # Update y-axis titles
+        fig.update_yaxes(title_text=feature, row=i, col=1)
+
+    # Update x-axis titles dynamically
+    fig.update_xaxes(title_text='Time', row=len(selected_features), col=1)
+
+    # Update layout with larger dimensions and better spacing
+    fig.update_layout(
+        height=400 * len(selected_features),
+        width=1200,
+        title_text='Features vs Time',
+        showlegend=False,
+        margin=dict(t=50, l=50, r=50, b=50)
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+
 # Function to create Thrust Force plots
 def create_thrust_force_plots(df, advance_rate_col, num_cutting_rings):
     try:
@@ -384,10 +362,10 @@ def create_thrust_force_plots(df, advance_rate_col, num_cutting_rings):
                            vertical_spacing=0.1)
 
         # Plot 1: Thrust Force vs Calculated Penetration Rate
-        if 'Calculated Penetration Rate [mm/rev]' in df.columns:
-            mask = df['Calculated Penetration Rate [mm/rev]'].notna()
+        if 'Penetration Rate [mm/rev]' in df.columns:
+            mask = df['Penetration Rate [mm/rev]'].notna()
             fig.add_trace(go.Scatter(
-                x=df.loc[mask, 'Calculated Penetration Rate [mm/rev]'], 
+                x=df.loc[mask, 'Penetration Rate [mm/rev]'], 
                 y=df.loc[mask, 'Thrust Force per Ring'], 
                 mode='markers', 
                 name='vs Calculated Penetration Rate', 
@@ -443,180 +421,6 @@ def create_thrust_force_plots(df, advance_rate_col, num_cutting_rings):
     except Exception as e:
         st.error(f"Error creating thrust force plots: {e}")
 
-# Function to create Features vs Time plot
-def create_features_vs_time(df, selected_features, time_column):
-    if not selected_features:
-        st.warning("Please select at least one feature for the time series plot.")
-        return
-
-    colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEEAD', '#D4A5A5',
-              '#9B6B6B', '#E9967A', '#4682B4', '#6B8E23']  # Expanded color palette
-
-    fig = make_subplots(rows=len(selected_features), cols=1,
-                        shared_xaxes=True,
-                        subplot_titles=selected_features,
-                        vertical_spacing=0.05)  # Reduce spacing between subplots
-
-    for i, feature in enumerate(selected_features, start=1):
-        fig.add_trace(
-            go.Scatter(
-                x=df[time_column],
-                y=df[feature],
-                mode='lines+markers',
-                name=feature,
-                line=dict(color=colors[i % len(colors)], width=2)
-            ),
-            row=i,
-            col=1
-        )
-
-        # Update y-axis titles
-        fig.update_yaxes(title_text=feature, row=i, col=1)
-
-    # Update x-axis titles dynamically
-    fig.update_xaxes(title_text='Time', row=len(selected_features), col=1)
-
-    # Update layout with larger dimensions and better spacing
-    fig.update_layout(
-        height=400 * len(selected_features),  # Increased height per subplot
-        width=1200,  # Increased overall width
-        title_text='Features vs Time',
-        showlegend=False,
-        margin=dict(t=50, l=50, r=50, b=50)
-    )
-
-    st.plotly_chart(fig, use_container_width=True)
-
-# Function to create statistical summary
-def create_statistical_summary(df, selected_features):
-    if not selected_features:
-        st.warning("Please select at least one feature for the statistical summary.")
-        return
-
-    summary = df[selected_features].describe().transpose()
-
-    st.write(summary)
-
-# Function to create polar plot
-def create_pressure_distribution_polar_plot(df, pressure_column, time_column):
-    try:
-        # Check if the pressure column exists
-        if pressure_column not in df.columns:
-            st.warning(f"Pressure column '{pressure_column}' not found in the dataset.")
-            return
-
-        df[pressure_column] = pd.to_numeric(df[pressure_column], errors='coerce')
-
-        # Normalize time to angles
-        df['Time_Angle'] = (df[time_column] - df[time_column].min()) / (df[time_column].max() - df[time_column].min()) * 360
-
-        fig = go.Figure()
-
-        fig.add_trace(go.Scatterpolar(
-            r=df[pressure_column],
-            theta=df['Time_Angle'],
-            mode='markers',
-            marker=dict(color='blue', size=5),
-            name='Pressure'
-        ))
-
-        fig.update_layout(
-            title='Pressure Distribution Over Time (Polar Plot)',
-            polar=dict(
-                radialaxis=dict(
-                    visible=True,
-                    range=[df[pressure_column].min(), df[pressure_column].max()]
-                )
-            ),
-            showlegend=False
-        )
-
-        st.plotly_chart(fig)
-    except Exception as e:
-        st.error(f"Error creating polar plot: {e}")
-
-# Function to read and process rock strength data
-def read_rock_strength_data(file):
-    try:
-        df = pd.read_excel(file)
-        return df
-    except Exception as e:
-        st.error(f"Error reading rock strength data: {e}")
-        return None
-
-# Function to preprocess rock strength data
-def preprocess_rock_strength_data(df):
-    try:
-        df['Rock Type'] = df['Probenbezeichnung'].str.split().str[0]
-        pivoted = df.pivot_table(values='Value', index='Rock Type', columns='Test', aggfunc='mean')
-        pivoted.rename(columns={'UCS': 'UCS (MPa)', 'BTS': 'BTS (MPa)', 'PLT': 'PLT (MPa)'}, inplace=True)
-        return pivoted
-    except Exception as e:
-        st.error(f"Error preprocessing rock strength data: {e}")
-        return None
-
-# Function to create rock strength comparison chart
-def create_rock_strength_comparison_chart(df, rock_df, rock_type, selected_features):
-    try:
-        # Prepare data for plotting
-        rock_strength_data = rock_df.loc[rock_type].dropna()
-        machine_data = df[selected_features].mean()
-
-        # Combine rock strength and machine data
-        combined_data = pd.concat([rock_strength_data, machine_data])
-
-        # Create the bar chart
-        fig = go.Figure()
-
-        # Add bars for rock strength parameters
-        fig.add_trace(go.Bar(
-            x=rock_strength_data.index,
-            y=rock_strength_data.values,
-            name='Rock Strength',
-            marker_color='#FF6B6B'
-        ))
-
-        # Add bars for machine parameters
-        fig.add_trace(go.Bar(
-            x=machine_data.index,
-            y=machine_data.values,
-            name='Machine Parameters',
-            marker_color='#4ECDC4'
-        ))
-
-        # Update layout
-        fig.update_layout(
-            title=f'Rock Strength ({rock_type}) vs Machine Parameters Comparison',
-            xaxis_title="Parameters",
-            yaxis_title="Values",
-            barmode='group',
-            height=600,
-            width=1000,
-            showlegend=True,
-            template='plotly_white',
-            legend=dict(
-                yanchor="top",
-                y=0.99,
-                xanchor="right",
-                x=0.99,
-                bgcolor="rgba(255, 255, 255, 0.8)",
-                bordercolor="rgba(0, 0, 0, 0.3)",
-                borderwidth=1
-            )
-        )
-
-        # Improve hover information
-        fig.update_traces(
-            hovertemplate="<b>%{x}</b><br>" +
-                         "Value: %{y:.2f}<br>" +
-                         "<extra></extra>"
-        )
-
-        st.plotly_chart(fig)
-    except Exception as e:
-        st.error(f"Error creating rock strength comparison chart: {e}")
-
-# Main function
 # Main function
 def main():
     try:
@@ -628,7 +432,6 @@ def main():
         st.sidebar.header("Data Upload & Analysis")
 
         uploaded_file = st.sidebar.file_uploader("Machine Data (CSV/Excel)", type=['csv', 'xlsx'])
-        rock_strength_file = st.sidebar.file_uploader("Rock Strength Data (CSV/Excel)", type=['csv', 'xlsx'])
 
         if uploaded_file is not None:
             df = load_data(uploaded_file)
@@ -668,6 +471,11 @@ def main():
                 # Input for number of cutting rings
                 num_cutting_rings = st.sidebar.number_input("Enter number of cutting rings", min_value=1, value=1, step=1)
 
+                # User input for data sampling rate and averaging interval
+                st.sidebar.header("Data Sampling & Averaging")
+                data_sampling_rate = st.sidebar.selectbox("Select Original Data Sampling Rate", ['Millisecond', '10 Milliseconds'])
+                averaging_interval = st.sidebar.selectbox("Select Averaging Interval", ['1S', '5S', '10S', '30S'])
+
                 if working_pressure_col != 'None' and revolution_col != 'None':
                     df = calculate_derived_features(df, working_pressure_col, revolution_col, n1, torque_constant, selected_distance)
                     
@@ -681,7 +489,7 @@ def main():
                 
                 time_column = get_time_column(df_viz)
 
-                options = ['Parameters vs Chainage', 'Features vs Time', 'Thrust Force Plots', 'Statistical Summary', 'Pressure Distribution', 'Rock Strength Comparison']
+                options = ['Parameters vs Chainage', 'Features vs Time', 'Thrust Force Plots']
                 selected_option = st.sidebar.radio("Choose visualization", options)
 
                 default_features = []
@@ -689,8 +497,8 @@ def main():
                     default_features.append('Calculated torque [kNm]')
                 if 'Average Speed (mm/min)' in all_features:
                     default_features.append('Average Speed (mm/min)')
-                if 'Calculated Penetration Rate [mm/rev]' in all_features:
-                    default_features.append('Calculated Penetration Rate [mm/rev]')
+                if 'Penetration Rate [mm/rev]' in all_features:
+                    default_features.append('Penetration Rate [mm/rev]')
                 if 'Sensor-based Penetration Rate [mm/rev]' in all_features:
                     default_features.append('Sensor-based Penetration Rate [mm/rev]')
                 
@@ -702,49 +510,30 @@ def main():
 
                 st.subheader(f"Visualization: {selected_option}")
 
-                if selected_option == 'Thrust Force Plots':
+                if selected_option == 'Parameters vs Chainage':
+                    if selected_features:
+                        # Average data over specified time intervals
+                        df_viz = average_data(df_viz, time_column, averaging_interval)
+                        create_parameters_vs_chainage(df_viz, selected_features, 'Chainage [mm]')
+                    else:
+                        st.warning("Please select features to visualize against chainage.")
+
+                elif selected_option == 'Features vs Time':
+                    if selected_features:
+                        # Average data over specified time intervals
+                        df_viz = average_data(df_viz, time_column, averaging_interval)
+                        create_features_vs_time(df_viz, selected_features, time_column)
+                    else:
+                        st.warning("Please select features to visualize over time.")
+
+                elif selected_option == 'Thrust Force Plots':
+                    # Average data over specified time intervals
+                    df_viz = average_data(df_viz, time_column, averaging_interval)
                     create_thrust_force_plots(
                         df_viz, 
                         'Advance rate [mm/min]' if advance_rate_col != 'None' else None,
                         num_cutting_rings
                     )
-                elif selected_option == 'Features vs Time':
-                    if selected_features:
-                        df_viz = handle_time_filtering_and_averaging(df_viz, time_column)
-                        create_features_vs_time(df_viz, selected_features, time_column)
-                    else:
-                        st.warning("Please select features to visualize over time.")
-                elif selected_option == 'Parameters vs Chainage':
-                    if selected_features:
-                        df_viz = handle_chainage_filtering_and_averaging(df_viz, 'Chainage [mm]')
-
-                        create_parameters_vs_chainage(df_viz, selected_features, 'Chainage [mm]')
-                    else:
-                        st.warning("Please select features to visualize against chainage.")
-                elif selected_option == 'Statistical Summary':
-                    if selected_features:
-                        create_statistical_summary(df_viz, selected_features)
-                    else:
-                        st.warning("Please select features for statistical summary.")
-                elif selected_option == 'Pressure Distribution':
-                    if working_pressure_col != 'None' and time_column is not None:
-                        create_pressure_distribution_polar_plot(df_viz, 'Working pressure [bar]', time_column)
-                    else:
-                        st.warning("Please ensure both working pressure and time columns are selected.")
-                elif selected_option == 'Rock Strength Comparison':
-                    if rock_strength_file is not None:
-                        rock_strength_data = read_rock_strength_data(rock_strength_file)
-                        if rock_strength_data is not None:
-                            rock_df = preprocess_rock_strength_data(rock_strength_data)
-                            if rock_df is not None:
-                                rock_type = st.sidebar.selectbox("Select Rock Type", rock_df.index)
-                                create_rock_strength_comparison_chart(df_viz, rock_df, rock_type, selected_features)
-                            else:
-                                st.warning("Error processing rock strength data.")
-                        else:
-                            st.warning("Error loading rock strength data.")
-                    else:
-                        st.warning("Please upload rock strength data to use this feature.")
 
                 if st.sidebar.button("Download Processed Data"):
                     csv = df_viz.to_csv(index=False)
