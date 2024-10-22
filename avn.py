@@ -1,3 +1,13 @@
+import streamlit as st
+import pandas as pd
+import numpy as np
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+import seaborn as sns
+import matplotlib.pyplot as plt
+import io
+import base64
+
 # Set page config at the very beginning
 st.set_page_config(
     page_title="Herrenknecht Hard Rock Data Analysis App",
