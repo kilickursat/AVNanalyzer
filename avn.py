@@ -815,8 +815,6 @@ def safe_selectbox(label, options, suggested_option):
 
 
 
-
-
 def main():
     try:
         set_background_color()
@@ -831,7 +829,7 @@ def main():
         if uploaded_file is not None:
             if uploaded_file.name.endswith('.csv'):
                 try:
-                    df = pd.read_csv(uploaded_file, error_bad_lines=False)
+                    df = pd.read_csv(uploaded_file, on_bad_lines='skip')
                 except pd.errors.ParserError as e:
                     st.error(f"Error reading CSV file: {e}")
                     return
