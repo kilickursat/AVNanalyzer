@@ -115,33 +115,6 @@ def calculate_derived_features(df, working_pressure_col, revolution_col, n1, tor
                 axis=1
             )
         
-        # Compute total distance and total time
-        if time_col and selected_distance and pd.api.types.is_numeric_dtype(df[selected_distance]) and (
-            pd.api.types.is_numeric_dtype(df[time_col]) or pd.api.types.is_datetime64_any_dtype(df[time_col])
-        ):
-            total_distance = round(df[selected_distance].max() - df[selected_distance].min(), 2)
-            if pd.api.types.is_datetime64_any_dtype(df[time_col]):
-                total_time = round((df[time_col].max() - df[time_col].min()).total_seconds(), 2)
-                # Convert seconds to minutes
-                total_time = round(total_time / 60, 2)
-            else:
-                total_time = round(df[time_col].max() - df[time_col].min(), 2)
-                # Assuming the time column is in microseconds; adjust conversion as needed
-                total_time = round(total_time * (0.000001 / 60), 6)
-            
-            # Calculate average speed and penetration rate
-            average_speed = round(total_distance / total_time, 2) if total_time != 0 else 0
-            mean_advance_rate = round(df['Advance rate [mm/min]'].mean(), 2) if 'Advance rate [mm/min]' in df.columns else 0
-            mean_revolution = round(df['Revolution [rpm]'].mean(), 2) if 'Revolution [rpm]' in df.columns else 1  # Avoid division by zero
-
-            penetration_rate = round(mean_advance_rate / mean_revolution, 2) if mean_revolution != 0 else np.nan
-
-            # Assign the computed average speed and penetration rate to the entire DataFrame
-            df['Average Speed (mm/min)'] = average_speed
-            df['Penetration Rate [mm/rev]'] = penetration_rate
-        else:
-            st.warning("Cannot compute Average Speed and Penetration Rate due to missing or non-numeric distance or time columns.")
-
         return df
 
     except Exception as e:
@@ -538,6 +511,7 @@ def create_parameters_vs_chainage(df, selected_features, chainage_column, penetr
     colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEEAD', '#D4A5A5',
               '#9B6B6B', '#E9967A', '#4682B4', '#6B8E23']
 
+    # Only include numeric features
     available_features = [f for f in selected_features if f in df.columns and pd.api.types.is_numeric_dtype(df[f])]
     
     if not available_features:
@@ -571,7 +545,7 @@ def create_parameters_vs_chainage(df, selected_features, chainage_column, penetr
                 fig.add_trace(
                     go.Scatter(
                         x=df[chainage_column],
-                        y=[df['Penetration Rate [mm/rev]'].iloc[0]] * len(df),
+                        y=df['Penetration Rate [mm/rev]'],
                         mode='lines',
                         name='Calculated Penetration Rate',
                         line=dict(color='blue', dash='dash')
@@ -583,7 +557,7 @@ def create_parameters_vs_chainage(df, selected_features, chainage_column, penetr
                 fig.add_trace(
                     go.Scatter(
                         x=df[chainage_column],
-                        y=[df['Penetration Rate [mm/rev]'].iloc[0]] * len(df),
+                        y=df['Sensor-based Penetration Rate'],
                         mode='lines',
                         name='Sensor-based Penetration Rate',
                         line=dict(color='green', dash='dot')
@@ -684,7 +658,7 @@ def create_multi_axis_violin_plots(df, selected_features):
         st.error(f"Error creating violin plots: {e}")
 
 # Updated function to handle chainage filtering and averaging with aggregation
-def handle_chainage_filtering_and_averaging(df, chainage_column, aggregation):
+def handle_chainage_filtering_and_averaging(df, chainage_column, aggregation, distance_col, time_col, revolution_col, advance_rate_col):
     try:
         st.sidebar.header("Chainage Filtering")
 
@@ -703,21 +677,48 @@ def handle_chainage_filtering_and_averaging(df, chainage_column, aggregation):
         if aggregation in ['1S', '5S', '10S', '30S', '1T', '5T', '10T', '30T']:
             # Determine step size based on aggregation
             if aggregation.endswith('S'):
-                step = int(aggregation.rstrip('S'))
+                step_size = int(aggregation.rstrip('S'))
             elif aggregation.endswith('T'):
-                step = int(aggregation.rstrip('T')) * 50  # Example step of 50 mm per T
+                step_size = int(aggregation.rstrip('T')) * 50  # Example step of 50 mm per T
             else:
-                step = 10  # Default step
+                step_size = 10  # Default step
 
             # Create bins for aggregation
-            bins = np.arange(filtered_df[chainage_column].min(), filtered_df[chainage_column].max(), step=step)
+            bins = np.arange(filtered_df[chainage_column].min(), filtered_df[chainage_column].max(), step=step_size)
             if len(bins) == 0:
                 bins = np.linspace(filtered_df[chainage_column].min(), filtered_df[chainage_column].max(), num=10)
             filtered_df['chainage_bin'] = pd.cut(filtered_df[chainage_column], bins=bins, include_lowest=True)
 
-            # Perform aggregation, ensuring only numeric columns are aggregated
-            aggregated_df = filtered_df.groupby('chainage_bin').mean(numeric_only=True).reset_index()
-            aggregated_df[chainage_column] = aggregated_df['chainage_bin'].apply(lambda x: x.mid if pd.notnull(x.mid) else x)
+            # Perform aggregation: min and max for distance and time, mean for others
+            aggregation_functions = {
+                distance_col: ['min', 'max'],
+                time_col: ['min', 'max'],
+                'Revolution [rpm]': 'mean',
+                'Advance rate [mm/min]': 'mean',
+                'Calculated torque [kNm]': 'mean',
+                'Penetration Rate [mm/rev]': 'mean',
+                'Average Speed (mm/min)': 'mean'
+            }
+
+            aggregated_df = filtered_df.groupby('chainage_bin').agg(aggregation_functions)
+            # Flatten MultiIndex columns
+            aggregated_df.columns = ['_'.join(col).strip() for col in aggregated_df.columns.values]
+            aggregated_df = aggregated_df.reset_index()
+
+            # Calculate Average Speed and Penetration Rate per bin
+            if 'min_' in aggregated_df.columns and 'max_' in aggregated_df.columns:
+                aggregated_df['Average Speed (mm/min)'] = (aggregated_df[f'{distance_col}_max'] - aggregated_df[f'{distance_col}_min']) / (aggregated_df[f'{time_col}_max'] - aggregated_df[f'{time_col}_min'])
+                # Handle division by zero or invalid calculations
+                aggregated_df['Average Speed (mm/min)'] = aggregated_df['Average Speed (mm/min)'].replace([np.inf, -np.inf], np.nan).fillna(0)
+
+            if 'Advance rate [mm/min]_mean' in aggregated_df.columns and 'Revolution [rpm]_mean' in aggregated_df.columns:
+                aggregated_df['Penetration Rate [mm/rev]'] = aggregated_df['Advance rate [mm/min]_mean'] / aggregated_df['Revolution [rpm]_mean']
+                # Handle division by zero or invalid calculations
+                aggregated_df['Penetration Rate [mm/rev]'] = aggregated_df['Penetration Rate [mm/rev]'].replace([np.inf, -np.inf], np.nan)
+
+            # Select relevant columns
+            aggregated_df = aggregated_df[[chainage_column, 'Average Speed (mm/min)', 'Penetration Rate [mm/rev]'] + 
+                                          [col for col in aggregated_df.columns if col not in [chainage_column, 'Average Speed (mm/min)', 'Penetration Rate [mm/rev]'] and not col.startswith('min_') and not col.startswith('max_')]]
 
             return aggregated_df
         else:
@@ -983,8 +984,16 @@ def main():
                         if aggregation.startswith('1S') or aggregation.startswith('5S') or aggregation.startswith('10S') or aggregation.startswith('30S') or \
                            aggregation.startswith('1T') or aggregation.startswith('5T') or aggregation.startswith('10T') or aggregation.startswith('30T'):
                             if pd.api.types.is_numeric_dtype(df_viz[time_column]):
-                                # For relative time (numeric), binning based on aggregation
-                                aggregated_df = handle_chainage_filtering_and_averaging(df_viz, time_column, aggregation)
+                                # For relative time (numeric), use handle_chainage_filtering_and_averaging
+                                aggregated_df = handle_chainage_filtering_and_averaging(
+                                    df_viz, 
+                                    time_column, 
+                                    aggregation, 
+                                    distance_col=time_column, 
+                                    time_col=time_column, 
+                                    revolution_col='Revolution [rpm]', 
+                                    advance_rate_col='Advance rate [mm/min]'
+                                )
                             else:
                                 # For datetime, resampling
                                 df_viz = df_viz.set_index(time_column)
@@ -994,7 +1003,8 @@ def main():
                                     resample_rule = f"{aggregation.rstrip('T')}T"
                                 else:
                                     resample_rule = '1S'  # Default
-                                aggregated_df = df_viz.resample(resample_rule).mean(numeric_only=True).reset_index()
+                                aggregated_df = df_viz.resample(resample_rule).mean().reset_index()
+                                st.sidebar.write(f"Data aggregated every {aggregation}")
                             st.sidebar.write(f"Data aggregated every {aggregation}")
                         else:
                             st.sidebar.warning("Unknown aggregation interval. Skipping aggregation.")
@@ -1020,16 +1030,32 @@ def main():
                             ['None', '1S', '5S', '10S', '30S', '1T', '5T', '10T', '30T']
                         )
 
-                        # Chainage Filtering and Averaging
-                        df_viz_processed = handle_chainage_filtering_and_averaging(df_viz, 'Chainage [mm]', aggregation)
+                        if aggregation != 'None':
+                            # Chainage Filtering and Averaging
+                            aggregated_df = handle_chainage_filtering_and_averaging(
+                                df_viz, 
+                                'Chainage [mm]', 
+                                aggregation, 
+                                distance_col='Chainage [mm]', 
+                                time_col='Chainage [mm]', 
+                                revolution_col='Revolution [rpm]', 
+                                advance_rate_col='Advance rate [mm/min]'
+                            )
 
-                        create_parameters_vs_chainage(
-                            df_viz_processed, 
-                            selected_features, 
-                            'Chainage [mm]', 
-                            penetration_rates_available=('Penetration Rate [mm/rev]' in df_viz_processed.columns), 
-                            aggregation=aggregation
-                        )
+                            create_parameters_vs_chainage(
+                                aggregated_df, 
+                                selected_features, 
+                                'Chainage [mm]', 
+                                penetration_rates_available=('Penetration Rate [mm/rev]' in aggregated_df.columns)
+                            )
+                        else:
+                            # No aggregation, use filtered_df as is
+                            create_parameters_vs_chainage(
+                                df_viz, 
+                                selected_features, 
+                                'Chainage [mm]', 
+                                penetration_rates_available=('Penetration Rate [mm/rev]' in df_viz.columns)
+                            )
                     else:
                         st.warning("Please select features to visualize against chainage.")
                 elif selected_option == 'Box Plots':
@@ -1050,7 +1076,7 @@ def main():
                     st.sidebar.markdown(href, unsafe_allow_html=True)
 
             else:
-                st.error("Please upload a machine data file to proceed.")
+                st.error("Error loading the data. Please check your file format.")
     except Exception as e:
         st.error(f"An unexpected error occurred in the main function: {str(e)}")
 
