@@ -148,24 +148,26 @@ def create_parameters_vs_chainage(df, selected_features, chainage_column, penetr
         st.warning("Please select at least one feature for the chainage plot.")
         return
 
-    # Ensure the chainage column exists
-    if chainage_column not in df.columns:
-        st.error(f"Chainage column '{chainage_column}' not found in the dataset.")
+    # Determine which chainage column to use
+    if 'Chainage_mid' in df.columns:
+        plot_chainage = 'Chainage_mid'
+    else:
+        plot_chainage = chainage_column
+        st.info(f"'Chainage_mid' not found. Using '{chainage_column}' instead.")
+
+    # Ensure the chosen chainage column exists
+    if plot_chainage not in df.columns:
+        st.error(f"Chainage column '{plot_chainage}' not found in the dataset.")
         return
 
-    # Ensure 'Chainage_mid' exists after aggregation
-    if 'Chainage_mid' not in df.columns:
-        st.error("Aggregated dataframe does not contain 'Chainage_mid' column.")
-        return
-
-    # Sort the data by chainage_mid
-    df = df.sort_values(by='Chainage_mid')
+    # Sort the data by the chosen chainage column
+    df = df.sort_values(by=plot_chainage)
 
     colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEEAD', '#D4A5A5',
               '#9B6B6B', '#E9967A', '#4682B4', '#6B8E23']
 
     available_features = [f for f in selected_features if f in df.columns and pd.api.types.is_numeric_dtype(df[f])]
-    
+
     if not available_features:
         st.warning("None of the selected numeric features are available in the dataset.")
         return
@@ -182,7 +184,7 @@ def create_parameters_vs_chainage(df, selected_features, chainage_column, penetr
 
             fig.add_trace(
                 go.Scatter(
-                    x=df['Chainage_mid'],
+                    x=df[plot_chainage],
                     y=y_data,
                     mode='lines',
                     name=feature_name,
@@ -191,12 +193,12 @@ def create_parameters_vs_chainage(df, selected_features, chainage_column, penetr
                 row=i,
                 col=1
             )
-            
+
             # Plot Penetration Rates if available
             if feature == 'Penetration Rate [mm/rev]' and penetration_rates_available:
                 fig.add_trace(
                     go.Scatter(
-                        x=df['Chainage_mid'],
+                        x=df[plot_chainage],
                         y=df['Penetration Rate [mm/rev]'],
                         mode='lines',
                         name='Calculated Penetration Rate',
@@ -208,7 +210,7 @@ def create_parameters_vs_chainage(df, selected_features, chainage_column, penetr
             elif feature == 'Sensor-based Penetration Rate' and penetration_rates_available:
                 fig.add_trace(
                     go.Scatter(
-                        x=df['Chainage_mid'],
+                        x=df[plot_chainage],
                         y=df['Penetration Rate [mm/rev]'],
                         mode='lines',
                         name='Sensor-based Penetration Rate',
@@ -486,7 +488,7 @@ def create_correlation_heatmap(df, selected_features):
 
     # Only use the features that the user has explicitly selected and are numeric
     available_features = [f for f in selected_features if f in df.columns and pd.api.types.is_numeric_dtype(df[f])]
-    
+
     if len(available_features) < 2:
         st.warning("Please select at least two valid numeric features for the correlation heatmap.")
         return
@@ -502,6 +504,10 @@ def create_correlation_heatmap(df, selected_features):
 
 # Updated function to create statistical summary
 def create_statistical_summary(df, selected_features, round_to=2):
+    # Automatically include 'Penetration Rate [mm/rev]' if present
+    if 'Penetration Rate [mm/rev]' in df.columns and 'Penetration Rate [mm/rev]' not in selected_features:
+        selected_features.append('Penetration Rate [mm/rev]')
+    
     if not selected_features:
         st.warning("Please select at least one feature for the statistical summary.")
         return
@@ -757,6 +763,10 @@ def create_multi_axis_violin_plots(df, selected_features):
 # Updated function to handle chainage filtering and averaging with aggregation
 def handle_chainage_filtering_and_averaging(df, chainage_column, aggregation_method='auto'):
     try:
+        if aggregation_method == 'None':
+            # No aggregation; return the original dataframe
+            return df
+        
         # Determine aggregation interval based on user selection or auto detection
         if aggregation_method == 'auto':
             bin_size = (df[chainage_column].max() - df[chainage_column].min()) / 1000  # Adjust bin size as needed
@@ -990,6 +1000,7 @@ def main():
 
                 time_column = get_time_column(df)
 
+                # Ensure derived features are calculated before any visualization
                 if working_pressure_col != 'None' and revolution_col != 'None' and time_column:
                     df = calculate_derived_features(df, working_pressure_col, revolution_col, n1, torque_constant, selected_distance, time_column)
                 
@@ -1012,8 +1023,8 @@ def main():
                     if 'Average Speed (mm/min)' in all_features and not df_viz['Average Speed (mm/min)'].isna().all():
                         default_features.append('Average Speed (mm/min)')
                     if 'Penetration Rate [mm/rev]' in all_features and not df_viz['Penetration Rate [mm/rev]'].isna().all():
-                        default_features.append('Penetration Rate [mm/rev]')
-                    
+                        default_features.append('Penetration Rate [mm/rev]')  # Ensuring inclusion
+
                     selected_features = st.sidebar.multiselect(
                         "Select features for analysis",
                         all_features,
@@ -1146,12 +1157,12 @@ def main():
                             # Chainage Filtering and Averaging
                             df_viz_processed = handle_chainage_filtering_and_averaging(df_viz, 'Chainage [mm]', aggregation)
                         else:
-                            df_viz_processed = df_viz
+                            df_viz_processed = df_viz  # No aggregation
 
                         create_parameters_vs_chainage(
                             df_viz_processed, 
                             selected_features, 
-                            'Chainage_mid',  # Use 'Chainage_mid' for plotting
+                            'Chainage [mm]',  # Pass the original chainage column
                             penetration_rates_available=('Penetration Rate [mm/rev]' in df_viz_processed.columns), 
                             aggregation=aggregation
                         )
@@ -1182,7 +1193,6 @@ def main():
     st.markdown("---")
     st.markdown("© 2024 Herrenknecht AG. All rights reserved.")
     st.markdown("**Created by Kursat Kilic - Geotechnical Digitalization**")
-
 
 if __name__ == "__main__":
     main()
