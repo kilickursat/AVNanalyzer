@@ -131,7 +131,7 @@ def calculate_derived_features(df, working_pressure_col, revolution_col, n1, tor
                 total_time = (df[time_col].max() - df[time_col].min()).total_seconds() / 60  # Convert to minutes
             else:
                 total_time = (df[time_col].max() - df[time_col].min()) / 60000  # Convert milliseconds to minutes
-            
+
             total_distance = df[selected_distance].max() - df[selected_distance].min()
             average_speed = total_distance / total_time if total_time > 0 else 0
             df['Average Speed (mm/min)'] = average_speed
@@ -141,136 +141,159 @@ def calculate_derived_features(df, working_pressure_col, revolution_col, n1, tor
     except Exception as e:
         st.error(f"Error calculating derived features: {e}")
         return df
-        
-def create_parameters_vs_chainage(df, selected_features, chainage_column, time_column):
-    try:
-        if not selected_features:
-            st.warning("Please select at least one feature for the chainage plot.")
-            return
 
-        # Determine data frequency
-        if pd.api.types.is_datetime64_any_dtype(df[time_column]):
-            time_diff = df[time_column].diff().dt.total_seconds().median()
-        else:
-            time_diff = df[time_column].diff().median()
+def create_parameters_vs_chainage(df, selected_features, chainage_column, penetration_rates_available=False, aggregation=None):
+    if not selected_features:
+        st.warning("Please select at least one feature for the chainage plot.")
+        return
 
-        # Create aggregated dataframe based on sampling rate
-        df = df.sort_values(by=time_column)
-        if time_diff < 1:  # millisecond data
-            df_agg = df.set_index(time_column).resample('1S').mean().reset_index()
-        else:  # second data
-            df_agg = df.set_index(time_column).resample('10S').mean().reset_index()
+    # Ensure the chainage column exists
+    if chainage_column not in df.columns:
+        st.error(f"Chainage column '{chainage_column}' not found in the dataset.")
+        return
 
-        colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEEAD', '#D4A5A5',
-                 '#9B6B6B', '#E9967A', '#4682B4', '#6B8E23']
+    # Sort the data by chainage column
+    df = df.sort_values(by=chainage_column)
 
-        fig = make_subplots(rows=len(selected_features), cols=1,
-                           shared_xaxes=True,
-                           subplot_titles=selected_features,
-                           vertical_spacing=0.1)
+    colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEEAD', '#D4A5A5',
+              '#9B6B6B', '#E9967A', '#4682B4', '#6B8E23']
 
-        for i, feature in enumerate(selected_features, start=1):
+    available_features = [f for f in selected_features if f in df.columns and pd.api.types.is_numeric_dtype(df[f])]
+    
+    if not available_features:
+        st.warning("None of the selected numeric features are available in the dataset.")
+        return
+
+    fig = make_subplots(rows=len(available_features), cols=1,
+                        shared_xaxes=True,
+                        subplot_titles=available_features,
+                        vertical_spacing=0.1)  # Increased spacing between subplots
+
+    for i, feature in enumerate(available_features, start=1):
+        try:
+            y_data = df[feature]
+            feature_name = feature
+
             fig.add_trace(
                 go.Scatter(
-                    x=df_agg[chainage_column],
-                    y=df_agg[feature],
+                    x=df[chainage_column],
+                    y=y_data,
                     mode='lines',
-                    name=feature,
+                    name=feature_name,
                     line=dict(color=colors[i % len(colors)], width=2)
                 ),
                 row=i,
                 col=1
             )
+            
+            # Plot Penetration Rates if available
+            if feature == 'Penetration Rate [mm/rev]' and penetration_rates_available:
+                fig.add_trace(
+                    go.Scatter(
+                        x=df[chainage_column],
+                        y=[df['Penetration Rate [mm/rev]'].iloc[0]] * len(df),
+                        mode='lines',
+                        name='Calculated Penetration Rate',
+                        line=dict(color='blue', dash='dash')
+                    ),
+                    row=i, col=1
+                )
+            elif feature == 'Sensor-based Penetration Rate' and penetration_rates_available:
+                fig.add_trace(
+                    go.Scatter(
+                        x=df[chainage_column],
+                        y=[df['Penetration Rate [mm/rev]'].iloc[0]] * len(df),
+                        mode='lines',
+                        name='Sensor-based Penetration Rate',
+                        line=dict(color='green', dash='dot')
+                    ),
+                    row=i, col=1
+                )
 
+            # Update y-axis titles with more space
             fig.update_yaxes(
-                title_text=feature,
-                row=i,
+                title_text=feature_name, 
+                row=i, 
                 col=1,
-                title_standoff=40
+                title_standoff=40  # Increased standoff to prevent overlap
             )
+        except Exception as e:
+            st.warning(f"Error plotting feature '{feature}': {e}")
 
-        fig.update_layout(
-            height=300 * len(selected_features),
-            width=1200,
-            title_text='Parameters vs Chainage',
-            showlegend=True,
-            legend=dict(
-                orientation="h",
-                yanchor="bottom",
-                y=1.02,
-                xanchor="right",
-                x=1
+    # Update layout with adjusted dimensions
+    fig.update_layout(
+        height=300 * len(available_features),  # Dynamic height based on number of features
+        width=1200,
+        title_text=f'Parameters vs Chainage',
+        showlegend=True,
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1
+        ),
+        margin=dict(t=100, l=150, r=50, b=50)  # Increased left margin for y-axis labels
+    )
+
+    # Update x-axis title only for the bottom subplot
+    fig.update_xaxes(title_text='Chainage [mm]', row=len(available_features), col=1)
+
+    st.plotly_chart(fig, use_container_width=True)
+
+def create_features_vs_time(df, selected_features, time_column, sampling_rate):
+    if not selected_features:
+        st.warning("Please select at least one feature for the time series plot.")
+        return
+
+    # Only include numeric features
+    selected_features = [f for f in selected_features if f in df.columns and pd.api.types.is_numeric_dtype(df[f])]
+    if not selected_features:
+        st.warning("No numeric features selected for the time series plot.")
+        return
+
+    colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEEAD', '#D4A5A5',
+              '#9B6B6B', '#E9967A', '#4682B4', '#6B8E23']  # Expanded color palette
+
+    fig = make_subplots(rows=len(selected_features), cols=1,
+                        shared_xaxes=True,
+                        subplot_titles=selected_features,
+                        vertical_spacing=0.05)  # Reduce spacing between subplots
+
+    for i, feature in enumerate(selected_features, start=1):
+        fig.add_trace(
+            go.Scatter(
+                x=df[time_column],
+                y=df[feature],
+                mode='lines',
+                name=feature,
+                line=dict(color=colors[i % len(colors)], width=2)
             ),
-            margin=dict(t=100, l=150, r=50, b=50)
+            row=i,
+            col=1
         )
 
-        fig.update_xaxes(title_text='Chainage [mm]', row=len(selected_features), col=1)
+        # Update y-axis titles
+        fig.update_yaxes(title_text=feature, row=i, col=1)
 
-        st.plotly_chart(fig, use_container_width=True)
+    # Update layout with larger dimensions and better spacing
+    fig.update_layout(
+        height=400 * len(selected_features),  # Increased height per subplot
+        width=1200,  # Increased overall width
+        title_text='Features vs Time',
+        showlegend=True,
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1
+        ),
+        margin=dict(t=100, l=100, r=50, b=50)  # Adjusted margins
+    )
 
-    except Exception as e:
-        st.error(f"Error in parameters vs chainage plot: {e}")
-def create_features_vs_time(df, selected_features, time_column):
-    try:
-        if not selected_features:
-            st.warning("Please select at least one feature for the time series plot.")
-            return
+    st.plotly_chart(fig, use_container_width=True)
 
-        # Determine data frequency
-        if pd.api.types.is_datetime64_any_dtype(df[time_column]):
-            time_diff = df[time_column].diff().dt.total_seconds().median()
-        else:
-            time_diff = df[time_column].diff().median()
-
-        # Create aggregated dataframe based on sampling rate
-        df = df.sort_values(by=time_column)
-        if time_diff < 1:  # millisecond data
-            df_agg = df.set_index(time_column).resample('1S').mean().reset_index()
-        else:  # second data
-            df_agg = df.set_index(time_column).resample('10S').mean().reset_index()
-
-        colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEEAD', '#D4A5A5',
-                 '#9B6B6B', '#E9967A', '#4682B4', '#6B8E23']
-
-        fig = make_subplots(rows=len(selected_features), cols=1,
-                           shared_xaxes=True,
-                           subplot_titles=selected_features,
-                           vertical_spacing=0.05)
-
-        for i, feature in enumerate(selected_features, start=1):
-            fig.add_trace(
-                go.Scatter(
-                    x=df_agg[time_column],
-                    y=df_agg[feature],
-                    mode='lines',
-                    name=feature,
-                    line=dict(color=colors[i % len(colors)], width=2)
-                ),
-                row=i,
-                col=1
-            )
-
-            fig.update_yaxes(title_text=feature, row=i, col=1)
-
-        fig.update_layout(
-            height=400 * len(selected_features),
-            width=1200,
-            title_text='Features vs Time',
-            showlegend=True,
-            legend=dict(
-                orientation="h",
-                yanchor="bottom",
-                y=1.02,
-                xanchor="right",
-                x=1
-            ),
-            margin=dict(t=100, l=100, r=50, b=50)
-        )
-
-        st.plotly_chart(fig, use_container_width=True)
-
-    except Exception as e:
-        st.error(f"Error in features vs time plot: {e}")        
 # Helper functions for column identification
 def identify_special_columns(df):
     working_pressure_keywords = ['working pressure', 'arbeitsdruck', 'sr_arbdr', 'SR_Arbdr','pressure', 'druck', 'arbdr']
@@ -300,12 +323,12 @@ def get_time_column(df):
     """Enhanced function to identify time column"""
     time_keywords = ['relativzeit', 'relative time', 'time', 'datum', 'date', 
                     'zeit', 'timestamp', 'Relative Time', 'Relativzeit']
-    
+
     # First try to find datetime columns
     datetime_cols = df.select_dtypes(include=['datetime64']).columns
     if len(datetime_cols) > 0:
         return datetime_cols[0]
-    
+
     # Then look for columns with time-related keywords
     for col in df.columns:
         if any(keyword in col.lower() for keyword in time_keywords):
@@ -317,7 +340,7 @@ def get_time_column(df):
                 # If conversion fails, it might be numeric relative time
                 if pd.api.types.is_numeric_dtype(df[col]):
                     return col
-    
+
     return None
 
 # Enhanced Function to read CSV or Excel file with validation
@@ -337,12 +360,12 @@ def load_data(file):
         if df.empty:
             st.error("The uploaded file is empty or not formatted correctly.")
             return None
-        
+
         # Ensure all columns are properly read
         df.columns = [col.strip() for col in df.columns]
 
         return df
-            
+
     except Exception as e:
         st.error(f"Error loading data: {e}")
         return None
@@ -662,107 +685,6 @@ def create_pressure_distribution_polar_plot(df, pressure_column, time_column):
     except Exception as e:
         st.error(f"Error creating pressure distribution polar plot: {e}")
 
-def create_parameters_vs_chainage(df, selected_features, chainage_column, penetration_rates_available=False, aggregation=None):
-    if not selected_features:
-        st.warning("Please select at least one feature for the chainage plot.")
-        return
-
-    # Ensure the chainage column exists
-    if chainage_column not in df.columns:
-        st.error(f"Chainage column '{chainage_column}' not found in the dataset.")
-        return
-
-    # Sort the data by chainage column
-    df = df.sort_values(by=chainage_column)
-
-    colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEEAD', '#D4A5A5',
-              '#9B6B6B', '#E9967A', '#4682B4', '#6B8E23']
-
-    available_features = [f for f in selected_features if f in df.columns and pd.api.types.is_numeric_dtype(df[f])]
-    
-    if not available_features:
-        st.warning("None of the selected numeric features are available in the dataset.")
-        return
-
-    fig = make_subplots(rows=len(available_features), cols=1,
-                        shared_xaxes=True,
-                        subplot_titles=available_features,
-                        vertical_spacing=0.1)  # Increased spacing between subplots
-
-    for i, feature in enumerate(available_features, start=1):
-        try:
-            y_data = df[feature]
-            feature_name = feature
-
-            fig.add_trace(
-                go.Scatter(
-                    x=df[chainage_column],
-                    y=y_data,
-                    mode='lines',
-                    name=feature_name,
-                    line=dict(color=colors[i % len(colors)], width=2)
-                ),
-                row=i,
-                col=1
-            )
-            
-            # Plot Penetration Rates if available
-            if feature == 'Penetration Rate [mm/rev]' and penetration_rates_available:
-                fig.add_trace(
-                    go.Scatter(
-                        x=df[chainage_column],
-                        y=[df['Penetration Rate [mm/rev]'].iloc[0]] * len(df),
-                        mode='lines',
-                        name='Calculated Penetration Rate',
-                        line=dict(color='blue', dash='dash')
-                    ),
-                    row=i,
-                    col=1
-                )
-            elif feature == 'Sensor-based Penetration Rate' and penetration_rates_available:
-                fig.add_trace(
-                    go.Scatter(
-                        x=df[chainage_column],
-                        y=[df['Penetration Rate [mm/rev]'].iloc[0]] * len(df),
-                        mode='lines',
-                        name='Sensor-based Penetration Rate',
-                        line=dict(color='green', dash='dot')
-                    ),
-                    row=i,
-                    col=1
-                )
-
-            # Update y-axis titles with more space
-            fig.update_yaxes(
-                title_text=feature_name, 
-                row=i, 
-                col=1,
-                title_standoff=40  # Increased standoff to prevent overlap
-            )
-        except Exception as e:
-            st.warning(f"Error plotting feature '{feature}': {e}")
-
-    # Update layout with adjusted dimensions
-    fig.update_layout(
-        height=300 * len(available_features),  # Dynamic height based on number of features
-        width=1200,
-        title_text=f'Parameters vs Chainage',
-        showlegend=True,
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=1.02,
-            xanchor="right",
-            x=1
-        ),
-        margin=dict(t=100, l=150, r=50, b=50)  # Increased left margin for y-axis labels
-    )
-
-    # Update x-axis title only for the bottom subplot
-    fig.update_xaxes(title_text='Chainage [mm]', row=len(available_features), col=1)
-
-    st.plotly_chart(fig, use_container_width=True)
-
 # Updated function to create multi-axis box plots with additional features
 def create_multi_axis_box_plots(df, selected_features):
     if not selected_features:
@@ -824,48 +746,54 @@ def create_multi_axis_violin_plots(df, selected_features):
         st.error(f"Error creating violin plots: {e}")
 
 # Updated function to handle chainage filtering and averaging with aggregation
-def handle_chainage_filtering_and_averaging(df, chainage_column, time_column, aggregation_method='auto'):
+def handle_chainage_filtering_and_averaging(df, key_column, aggregation_method='auto'):
     try:
-        # Determine data frequency
-        if pd.api.types.is_datetime64_any_dtype(df[time_column]):
-            time_diff = df[time_column].diff().dt.total_seconds().median()
+        # Determine if key_column is time or chainage based on data type
+        is_time = False
+        if pd.api.types.is_datetime64_any_dtype(df[key_column]):
+            is_time = True
+        elif pd.api.types.is_numeric_dtype(df[key_column]):
+            # Additional checks can be added here if necessary
+            pass
+
+        # Determine data frequency or key difference
+        if is_time:
+            if pd.api.types.is_datetime64_any_dtype(df[key_column]):
+                key_diff = df[key_column].diff().dt.total_seconds().median()
+            else:
+                key_diff = df[key_column].diff().median()
         else:
-            time_diff = df[time_column].diff().median()
+            key_diff = df[key_column].diff().median()
 
         # Set aggregation interval based on data frequency
         if aggregation_method == 'auto':
-            if time_diff < 1:  # millisecond data
+            if key_diff < 1:  # Assuming less than 1 second or similar
                 aggregation = '1S'
-            else:  # second data
+            else:
                 aggregation = '10S'
         else:
             aggregation = aggregation_method
 
         # Sort data
-        df = df.sort_values(by=[chainage_column, time_column])
+        df = df.sort_values(by=[key_column])
 
-        # Create bins for chainage
-        chainage_range = df[chainage_column].max() - df[chainage_column].min()
-        bin_size = chainage_range / 1000  # Adjust bin size as needed
-        df['chainage_bin'] = pd.cut(df[chainage_column], bins=np.arange(
-            df[chainage_column].min(),
-            df[chainage_column].max() + bin_size,
-            bin_size
-        ))
+        if is_time:
+            # For datetime, use resample
+            df = df.set_index(key_column)
+            aggregated_df = df.resample(aggregation).mean().reset_index()
+        else:
+            # For numeric key, perform binning
+            bin_size = float(aggregation.rstrip('S').rstrip('T'))  # Remove 'S' or 'T'
+            bins = np.arange(df[key_column].min(), df[key_column].max() + bin_size, bin_size)
+            df['key_bin'] = pd.cut(df[key_column], bins=bins)
+            numeric_columns = df.select_dtypes(include=[np.number]).columns
+            aggregated_df = df.groupby('key_bin')[numeric_columns].agg(['mean', 'std', 'min', 'max']).reset_index()
+            # Flatten MultiIndex columns
+            aggregated_df.columns = ['_'.join(col).strip('_') if col[1] else col[0] for col in aggregated_df.columns.values]
+            # For plotting, extract the bin centers
+            aggregated_df[key_column + '_center'] = aggregated_df['key_bin_mean']  # Assuming mean is available
 
-        # Aggregate data
-        numeric_columns = df.select_dtypes(include=[np.number]).columns
-        df_agg = df.groupby('chainage_bin')[numeric_columns].agg([
-            'mean',
-            'std',
-            'min',
-            'max'
-        ]).reset_index()
-
-        # Flatten column names
-        df_agg.columns = [f"{col[0]}_{col[1]}" if col[1] else col[0] for col in df_agg.columns]
-
-        return df_agg
+        return aggregated_df
 
     except Exception as e:
         st.error(f"Error in chainage filtering and averaging: {e}")
@@ -968,7 +896,7 @@ def create_thrust_force_plots(df, advance_rate_col):
         for i in range(1, 4):
             fig.update_yaxes(title_text=f"{thrust_force_col} [kN]", row=i, col=1)
 
-        # Add trend lines
+        # Add trend lines with variance check
         for i, (x_col, row) in enumerate([
             ('Penetration Rate [mm/rev]', 1),
             ('Average Speed (mm/min)', 2),
@@ -979,7 +907,7 @@ def create_thrust_force_plots(df, advance_rate_col):
                 x = df.loc[mask, x_col]
                 y = df.loc[mask, thrust_force_col]
                 
-                if len(x) > 1:  # Need at least 2 points for regression
+                if len(x.unique()) > 1 and len(x) > 1:
                     slope, intercept, r_value, _, _ = stats.linregress(x, y)
                     x_range = np.linspace(x.min(), x.max(), 100)
                     y_range = slope * x_range + intercept
@@ -994,6 +922,8 @@ def create_thrust_force_plots(df, advance_rate_col):
                         ),
                         row=row, col=1
                     )
+                else:
+                    st.warning(f"Cannot perform linear regression for '{x_col}' as all x values are identical.")
 
         st.plotly_chart(fig)
 
@@ -1006,20 +936,25 @@ def create_thrust_force_plots(df, advance_rate_col):
                 mask = df[param].notna() & df[thrust_force_col].notna()
                 if mask.sum() > 1:
                     correlation = df.loc[mask, [param, thrust_force_col]].corr().iloc[0, 1]
-                    _, _, r_value, _, _ = stats.linregress(df.loc[mask, param], df.loc[mask, thrust_force_col])
-                    corr_stats = corr_stats.append({
-                        'Parameter': param,
-                        'Correlation with Thrust Force': correlation,
-                        'R-squared': r_value**2
-                    }, ignore_index=True)
+                    # Check for variance before regression
+                    if df.loc[mask, param].nunique() > 1:
+                        _, _, r_value, _, _ = stats.linregress(df.loc[mask, param], df.loc[mask, thrust_force_col])
+                        corr_stats = corr_stats.append({
+                            'Parameter': param,
+                            'Correlation with Thrust Force': correlation,
+                            'R-squared': r_value**2
+                        }, ignore_index=True)
+                    else:
+                        corr_stats = corr_stats.append({
+                            'Parameter': param,
+                            'Correlation with Thrust Force': correlation,
+                            'R-squared': np.nan
+                        }, ignore_index=True)
         
         st.dataframe(corr_stats.style.format({
             'Correlation with Thrust Force': '{:.3f}',
-            'R-squared': '{:.3f}'
+            'R-squared': lambda x: f"{x:.3f}" if pd.notnull(x) else 'N/A'
         }))
-
-    except Exception as e:
-        st.error(f"Error creating thrust force plots: {e}")
 
 def safe_selectbox(label, options, suggested_option):
     try:
@@ -1160,19 +1095,19 @@ def main():
                         
                         if sampling_rate == 'Auto Detect':
                             # Automatically determine based on time differences
-                            df_viz = df_viz.sort_values(by=time_column)
-                            if pd.api.types.is_numeric_dtype(df_viz[time_column]):
-                                average_sampling_interval = df_viz[time_column].diff().median()
+                            df_viz_sorted = df_viz.sort_values(by=time_column)
+                            if pd.api.types.is_numeric_dtype(df_viz_sorted[time_column]):
+                                average_sampling_interval = df_viz_sorted[time_column].diff().median()
                                 st.sidebar.write(f"Detected average sampling interval: {average_sampling_interval} units")
                                 
                                 if average_sampling_interval < 1:
                                     aggregation = '1S'  # Every second
                                 else:
-                                    aggregation = '1T'  # Every minute
+                                    aggregation = '10S'  # Every 10 seconds
                             else:
-                                df_viz['time_diff'] = df_viz[time_column].diff().dt.total_seconds()
-                                average_sampling_interval = df_viz['time_diff'].median()
-                                st.sidebar.write(f"Detected average sampling interval: {average_sampling_interval} seconds")
+                                df_viz_sorted['time_diff'] = df_viz_sorted[time_column].diff().dt.total_seconds()
+                                average_sampling_interval = df_viz_sorted['time_diff'].median()
+                                st.sidebar.write(f"Detected average sampling interval: {average_sampling_interval:.2f} seconds")
                                 
                                 if average_sampling_interval < 60:
                                     aggregation = '1S'  # Every second
@@ -1191,19 +1126,7 @@ def main():
                         # Aggregate data based on selected interval
                         if aggregation.startswith('1S') or aggregation.startswith('5S') or aggregation.startswith('10S') or aggregation.startswith('30S') or \
                            aggregation.startswith('1T') or aggregation.startswith('5T') or aggregation.startswith('10T') or aggregation.startswith('30T'):
-                            if pd.api.types.is_numeric_dtype(df_viz[time_column]):
-                                # For relative time (numeric), binning based on aggregation
-                                aggregated_df = handle_chainage_filtering_and_averaging(df_viz, time_column, aggregation)
-                            else:
-                                # For datetime, resampling
-                                df_viz = df_viz.set_index(time_column)
-                                if aggregation.endswith('S'):
-                                    resample_rule = f"{aggregation.rstrip('S')}S"
-                                elif aggregation.endswith('T'):
-                                    resample_rule = f"{aggregation.rstrip('T')}T"
-                                else:
-                                    resample_rule = '1S'  # Default
-                                aggregated_df = df_viz.resample(resample_rule).mean().reset_index()
+                            aggregated_df = handle_chainage_filtering_and_averaging(df_viz, time_column, aggregation)
                             st.sidebar.write(f"Data aggregated every {aggregation}")
                         else:
                             st.sidebar.warning("Unknown aggregation interval. Skipping aggregation.")
@@ -1213,7 +1136,7 @@ def main():
                     else:
                         st.warning("Please select features to visualize over time.")
                 elif selected_option == 'Pressure Distribution' and time_column:
-                    if working_pressure_col and working_pressure_col != 'None':
+                    if 'Working pressure [bar]' in df_viz.columns:
                         renamed_pressure_col = 'Working pressure [bar]'
                         create_pressure_distribution_polar_plot(df_viz, renamed_pressure_col, time_column)
                     else:
@@ -1229,16 +1152,25 @@ def main():
                             ['None', '1S', '5S', '10S', '30S', '1T', '5T', '10T', '30T']
                         )
 
-                        # Chainage Filtering and Averaging
-                        df_viz_processed = handle_chainage_filtering_and_averaging(df_viz, 'Chainage [mm]', aggregation)
+                        if aggregation != 'None':
+                            # Chainage Filtering and Averaging
+                            aggregated_df = handle_chainage_filtering_and_averaging(df_viz, 'Chainage [mm]', aggregation)
 
-                        create_parameters_vs_chainage(
-                            df_viz_processed, 
-                            selected_features, 
-                            'Chainage [mm]', 
-                            penetration_rates_available=('Penetration Rate [mm/rev]' in df_viz_processed.columns), 
-                            aggregation=aggregation
-                        )
+                            create_parameters_vs_chainage(
+                                aggregated_df, 
+                                selected_features, 
+                                'Chainage [mm]', 
+                                penetration_rates_available=('Penetration Rate [mm/rev]' in aggregated_df.columns), 
+                                aggregation=aggregation
+                            )
+                        else:
+                            create_parameters_vs_chainage(
+                                df_viz, 
+                                selected_features, 
+                                'Chainage [mm]', 
+                                penetration_rates_available=('Penetration Rate [mm/rev]' in df_viz.columns), 
+                                aggregation=None
+                            )
                     else:
                         st.warning("Please select features to visualize against chainage.")
                 elif selected_option == 'Box Plots':
