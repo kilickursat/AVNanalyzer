@@ -395,6 +395,7 @@ def read_rock_strength_data(file):
 # Function to preprocess the rock strength data
 def preprocess_rock_strength_data(df):
     try:
+        # Assuming 'Probenbezeichnung' contains rock type information
         df['Rock Type'] = df['Probenbezeichnung'].str.split().str[0]
         pivoted = df.pivot_table(values='Value', index='Rock Type', columns='Test', aggfunc='mean')
         pivoted.rename(columns={'UCS': 'UCS (MPa)', 'BTS': 'BTS (MPa)', 'PLT': 'PLT (MPa)'}, inplace=True)
@@ -786,7 +787,7 @@ def handle_chainage_filtering_and_averaging(df, chainage_column, aggregation_met
         df_agg.columns = ['_'.join(col).strip() if col[1] else col[0] for col in df_agg.columns.values]
 
         # Extract the mid-point of each bin for plotting
-        df_agg['Chainage_mid'] = df['chainage_bin'].cat.categories.mid
+        df_agg['Chainage_mid'] = df_agg['chainage_bin'].apply(lambda x: x.mid if pd.notnull(x) else np.nan)
 
         return df_agg
 
@@ -1182,13 +1183,6 @@ def main():
     st.markdown("© 2024 Herrenknecht AG. All rights reserved.")
     st.markdown("**Created by Kursat Kilic - Geotechnical Digitalization**")
 
-def suggest_column(df, keywords):
-    """Helper function to suggest columns based on keywords"""
-    for kw in keywords:
-        for col in df.columns:
-            if kw.lower() in col.lower():
-                return col
-    return None
 
 if __name__ == "__main__":
     main()
