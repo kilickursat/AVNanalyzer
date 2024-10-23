@@ -965,6 +965,7 @@ def safe_selectbox(label, options, suggested_option):
     except ValueError:
         index = 0  # Default to 'None' if suggested_option is not in options
     return st.sidebar.selectbox(label, options, index=index)
+    
 # Main function
 def main():
     try:
@@ -1016,7 +1017,7 @@ def main():
 
                 if working_pressure_col != 'None' and revolution_col != 'None' and time_column:
                     df = calculate_derived_features(df, working_pressure_col, revolution_col, n1, torque_constant, selected_distance, time_column)
-                
+
                 df_viz = rename_columns(df.copy(), working_pressure_col, revolution_col, selected_distance, advance_rate_col)
 
                 all_features = df_viz.columns.tolist()
