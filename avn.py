@@ -109,45 +109,168 @@ def calculate_derived_features(df, working_pressure_col, revolution_col, n1, tor
             df[working_pressure_col] = pd.to_numeric(df[working_pressure_col], errors='coerce')
             df[revolution_col] = pd.to_numeric(df[revolution_col], errors='coerce')
 
+            # Calculate torque
             df['Calculated torque [kNm]'] = df.apply(
                 lambda row: calculate_torque(row[working_pressure_col], torque_constant, row[revolution_col], n1)
                 if pd.notna(row[working_pressure_col]) and pd.notna(row[revolution_col]) else np.nan,
                 axis=1
             )
-        
-        # Compute total distance and total time
-        if time_col and selected_distance and pd.api.types.is_numeric_dtype(df[selected_distance]) and (
-            pd.api.types.is_numeric_dtype(df[time_col]) or pd.api.types.is_datetime64_any_dtype(df[time_col])
-        ):
-            total_distance = round(df[selected_distance].max() - df[selected_distance].min(), 2)
+
+        # Calculate penetration rate for each row
+        if 'Advance rate [mm/min]' in df.columns and revolution_col in df.columns:
+            df['Penetration Rate [mm/rev]'] = df.apply(
+                lambda row: row['Advance rate [mm/min]'] / row[revolution_col] 
+                if pd.notna(row['Advance rate [mm/min]']) and pd.notna(row[revolution_col]) and row[revolution_col] != 0 
+                else np.nan,
+                axis=1
+            )
+
+        # Calculate average speed
+        if time_col and selected_distance:
             if pd.api.types.is_datetime64_any_dtype(df[time_col]):
-                total_time = round((df[time_col].max() - df[time_col].min()).total_seconds(), 2)
-                # Convert seconds to minutes
-                total_time = round(total_time / 60, 2)
+                total_time = (df[time_col].max() - df[time_col].min()).total_seconds() / 60  # Convert to minutes
             else:
-                total_time = round(df[time_col].max() - df[time_col].min(), 2)
-                # Assuming the time column is in microseconds; adjust conversion as needed
-                total_time = round(total_time * (0.000001 / 60), 6)
+                total_time = (df[time_col].max() - df[time_col].min()) / 60000  # Convert milliseconds to minutes
             
-            # Calculate average speed and penetration rate
-            average_speed = round(total_distance / total_time, 2) if total_time != 0 else 0
-            mean_advance_rate = round(df['Advance rate [mm/min]'].mean(), 2) if 'Advance rate [mm/min]' in df.columns else 0
-            mean_revolution = round(df['Revolution [rpm]'].mean(), 2) if 'Revolution [rpm]' in df.columns else 1  # Avoid division by zero
-
-            penetration_rate = round(mean_advance_rate / mean_revolution, 2) if mean_revolution != 0 else np.nan
-
-            # Assign the computed average speed and penetration rate to the entire DataFrame
+            total_distance = df[selected_distance].max() - df[selected_distance].min()
+            average_speed = total_distance / total_time if total_time > 0 else 0
             df['Average Speed (mm/min)'] = average_speed
-            df['Penetration Rate [mm/rev]'] = penetration_rate
-        else:
-            st.warning("Cannot compute Average Speed and Penetration Rate due to missing or non-numeric distance or time columns.")
 
         return df
 
     except Exception as e:
         st.error(f"Error calculating derived features: {e}")
         return df
+        
+def create_parameters_vs_chainage(df, selected_features, chainage_column, time_column):
+    try:
+        if not selected_features:
+            st.warning("Please select at least one feature for the chainage plot.")
+            return
 
+        # Determine data frequency
+        if pd.api.types.is_datetime64_any_dtype(df[time_column]):
+            time_diff = df[time_column].diff().dt.total_seconds().median()
+        else:
+            time_diff = df[time_column].diff().median()
+
+        # Create aggregated dataframe based on sampling rate
+        df = df.sort_values(by=time_column)
+        if time_diff < 1:  # millisecond data
+            df_agg = df.set_index(time_column).resample('1S').mean().reset_index()
+        else:  # second data
+            df_agg = df.set_index(time_column).resample('10S').mean().reset_index()
+
+        colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEEAD', '#D4A5A5',
+                 '#9B6B6B', '#E9967A', '#4682B4', '#6B8E23']
+
+        fig = make_subplots(rows=len(selected_features), cols=1,
+                           shared_xaxes=True,
+                           subplot_titles=selected_features,
+                           vertical_spacing=0.1)
+
+        for i, feature in enumerate(selected_features, start=1):
+            fig.add_trace(
+                go.Scatter(
+                    x=df_agg[chainage_column],
+                    y=df_agg[feature],
+                    mode='lines',
+                    name=feature,
+                    line=dict(color=colors[i % len(colors)], width=2)
+                ),
+                row=i,
+                col=1
+            )
+
+            fig.update_yaxes(
+                title_text=feature,
+                row=i,
+                col=1,
+                title_standoff=40
+            )
+
+        fig.update_layout(
+            height=300 * len(selected_features),
+            width=1200,
+            title_text='Parameters vs Chainage',
+            showlegend=True,
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=1.02,
+                xanchor="right",
+                x=1
+            ),
+            margin=dict(t=100, l=150, r=50, b=50)
+        )
+
+        fig.update_xaxes(title_text='Chainage [mm]', row=len(selected_features), col=1)
+
+        st.plotly_chart(fig, use_container_width=True)
+
+    except Exception as e:
+        st.error(f"Error in parameters vs chainage plot: {e}")
+def create_features_vs_time(df, selected_features, time_column):
+    try:
+        if not selected_features:
+            st.warning("Please select at least one feature for the time series plot.")
+            return
+
+        # Determine data frequency
+        if pd.api.types.is_datetime64_any_dtype(df[time_column]):
+            time_diff = df[time_column].diff().dt.total_seconds().median()
+        else:
+            time_diff = df[time_column].diff().median()
+
+        # Create aggregated dataframe based on sampling rate
+        df = df.sort_values(by=time_column)
+        if time_diff < 1:  # millisecond data
+            df_agg = df.set_index(time_column).resample('1S').mean().reset_index()
+        else:  # second data
+            df_agg = df.set_index(time_column).resample('10S').mean().reset_index()
+
+        colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEEAD', '#D4A5A5',
+                 '#9B6B6B', '#E9967A', '#4682B4', '#6B8E23']
+
+        fig = make_subplots(rows=len(selected_features), cols=1,
+                           shared_xaxes=True,
+                           subplot_titles=selected_features,
+                           vertical_spacing=0.05)
+
+        for i, feature in enumerate(selected_features, start=1):
+            fig.add_trace(
+                go.Scatter(
+                    x=df_agg[time_column],
+                    y=df_agg[feature],
+                    mode='lines',
+                    name=feature,
+                    line=dict(color=colors[i % len(colors)], width=2)
+                ),
+                row=i,
+                col=1
+            )
+
+            fig.update_yaxes(title_text=feature, row=i, col=1)
+
+        fig.update_layout(
+            height=400 * len(selected_features),
+            width=1200,
+            title_text='Features vs Time',
+            showlegend=True,
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=1.02,
+                xanchor="right",
+                x=1
+            ),
+            margin=dict(t=100, l=100, r=50, b=50)
+        )
+
+        st.plotly_chart(fig, use_container_width=True)
+
+    except Exception as e:
+        st.error(f"Error in features vs time plot: {e}")        
 # Helper functions for column identification
 def identify_special_columns(df):
     working_pressure_keywords = ['working pressure', 'arbeitsdruck', 'sr_arbdr', 'SR_Arbdr','pressure', 'druck', 'arbdr']
@@ -165,19 +288,36 @@ def get_distance_columns(df):
     return [col for col in df.columns if any(keyword in col.lower() for keyword in distance_keywords)]
 
 # Modified get_time_column function to handle relative time correctly
+def suggest_column(df, keywords):
+    """Helper function to suggest columns based on keywords"""
+    for kw in keywords:
+        for col in df.columns:
+            if kw.lower() in col.lower():
+                return col
+    return None
+
 def get_time_column(df):
-    time_keywords = ['relativzeit', 'relative time', 'time', 'datum', 'date', 'zeit', 'timestamp', 'Relative Time', 'Relativzeit']
+    """Enhanced function to identify time column"""
+    time_keywords = ['relativzeit', 'relative time', 'time', 'datum', 'date', 
+                    'zeit', 'timestamp', 'Relative Time', 'Relativzeit']
+    
+    # First try to find datetime columns
+    datetime_cols = df.select_dtypes(include=['datetime64']).columns
+    if len(datetime_cols) > 0:
+        return datetime_cols[0]
+    
+    # Then look for columns with time-related keywords
     for col in df.columns:
         if any(keyword in col.lower() for keyword in time_keywords):
-            if pd.api.types.is_numeric_dtype(df[col]):
-                return col  # Treat as relative time (numeric)
-            else:
-                try:
-                    df[col] = pd.to_datetime(df[col], errors='coerce', infer_datetime_format=True)
-                    if df[col].notna().sum() > 0:
-                        return col
-                except:
-                    continue
+            try:
+                # Try to convert to datetime
+                pd.to_datetime(df[col], errors='raise')
+                return col
+            except:
+                # If conversion fails, it might be numeric relative time
+                if pd.api.types.is_numeric_dtype(df[col]):
+                    return col
+    
     return None
 
 # Enhanced Function to read CSV or Excel file with validation
@@ -684,45 +824,49 @@ def create_multi_axis_violin_plots(df, selected_features):
         st.error(f"Error creating violin plots: {e}")
 
 # Updated function to handle chainage filtering and averaging with aggregation
-def handle_chainage_filtering_and_averaging(df, chainage_column, aggregation):
+def handle_chainage_filtering_and_averaging(df, chainage_column, time_column, aggregation_method='auto'):
     try:
-        st.sidebar.header("Chainage Filtering")
-
-        # User input for chainage range
-        min_chainage = float(df[chainage_column].min())
-        max_chainage = float(df[chainage_column].max())
-        step = (max_chainage - min_chainage) / 100 if (max_chainage - min_chainage) != 0 else 1
-        chainage_range = st.sidebar.slider("Select Chainage Range (mm)", min_chainage, max_chainage, (min_chainage, max_chainage), step=step)
-
-        # Filter the DataFrame based on selected range
-        filtered_df = df[(df[chainage_column] >= chainage_range[0]) & (df[chainage_column] <= chainage_range[1])]
-
-        st.sidebar.write(f"Selected Chainage Range: {chainage_range[0]} - {chainage_range[1]} mm")
-
-        # Aggregate data based on aggregation interval
-        if aggregation in ['1S', '5S', '10S', '30S', '1T', '5T', '10T', '30T']:
-            # Determine step size based on aggregation
-            if aggregation.endswith('S'):
-                step = int(aggregation.rstrip('S'))
-            elif aggregation.endswith('T'):
-                step = int(aggregation.rstrip('T')) * 50  # Example step of 50 mm per T
-            else:
-                step = 10  # Default step
-
-            # Create bins for aggregation
-            bins = np.arange(filtered_df[chainage_column].min(), filtered_df[chainage_column].max(), step=step)
-            if len(bins) == 0:
-                bins = np.linspace(filtered_df[chainage_column].min(), filtered_df[chainage_column].max(), num=10)
-            filtered_df['chainage_bin'] = pd.cut(filtered_df[chainage_column], bins=bins, include_lowest=True)
-
-            # Perform aggregation
-            aggregated_df = filtered_df.groupby('chainage_bin').agg('mean').reset_index()
-            aggregated_df[chainage_column] = aggregated_df['chainage_bin'].apply(lambda x: x.mid if pd.notnull(x.mid) else x)
-
-            return aggregated_df
+        # Determine data frequency
+        if pd.api.types.is_datetime64_any_dtype(df[time_column]):
+            time_diff = df[time_column].diff().dt.total_seconds().median()
         else:
-            st.warning("No aggregation applied.")
-            return filtered_df
+            time_diff = df[time_column].diff().median()
+
+        # Set aggregation interval based on data frequency
+        if aggregation_method == 'auto':
+            if time_diff < 1:  # millisecond data
+                aggregation = '1S'
+            else:  # second data
+                aggregation = '10S'
+        else:
+            aggregation = aggregation_method
+
+        # Sort data
+        df = df.sort_values(by=[chainage_column, time_column])
+
+        # Create bins for chainage
+        chainage_range = df[chainage_column].max() - df[chainage_column].min()
+        bin_size = chainage_range / 1000  # Adjust bin size as needed
+        df['chainage_bin'] = pd.cut(df[chainage_column], bins=np.arange(
+            df[chainage_column].min(),
+            df[chainage_column].max() + bin_size,
+            bin_size
+        ))
+
+        # Aggregate data
+        numeric_columns = df.select_dtypes(include=[np.number]).columns
+        df_agg = df.groupby('chainage_bin')[numeric_columns].agg([
+            'mean',
+            'std',
+            'min',
+            'max'
+        ]).reset_index()
+
+        # Flatten column names
+        df_agg.columns = [f"{col[0]}_{col[1]}" if col[1] else col[0] for col in df_agg.columns]
+
+        return df_agg
+
     except Exception as e:
         st.error(f"Error in chainage filtering and averaging: {e}")
         return df
@@ -730,22 +874,23 @@ def handle_chainage_filtering_and_averaging(df, chainage_column, aggregation):
 # Updated function to create thrust force plots
 def create_thrust_force_plots(df, advance_rate_col):
     try:
-        # Identify thrust force column
-        thrust_force_col = next((col for col in df.columns 
+        # Let user select thrust force column
+        thrust_force_cols = [col for col in df.columns 
                            if any(kw in col.lower() for kw in [
                                'thrust force', 'vorschubkraft', 'kraft', 'kraft_max', 
                                'gesamtkraft', 'gesamtkraft_stz', 'gesamtkraft_vtp', 
-                               'force'])), 
-                          None)
+                               'force'])]
         
-        if thrust_force_col is None:
-            st.warning("Thrust force column not found in the dataset.")
+        if not thrust_force_cols:
+            st.warning("No thrust force columns found in the dataset.")
             return
 
-        # Ensure thrust force column is numeric
+        thrust_force_col = st.selectbox("Select Thrust Force Column", thrust_force_cols)
+        
+        # Convert thrust force to numeric if needed
         df[thrust_force_col] = pd.to_numeric(df[thrust_force_col], errors='coerce')
 
-        # Create subplots
+        # Create subplots using raw data (no averaging)
         fig = make_subplots(rows=3, cols=1, 
                            subplot_titles=("Thrust Force vs Penetration Rate", 
                                          "Thrust Force vs Average Speed", 
@@ -753,62 +898,126 @@ def create_thrust_force_plots(df, advance_rate_col):
                            vertical_spacing=0.1)
 
         # Plot 1: Thrust Force vs Penetration Rate
-        if 'Penetration Rate [mm/rev]' in df.columns and pd.api.types.is_numeric_dtype(df['Penetration Rate [mm/rev]']):
-            mask = df['Penetration Rate [mm/rev]'].notna()
-            fig.add_trace(go.Scatter(
-                x=df.loc[mask, 'Penetration Rate [mm/rev]'], 
-                y=df.loc[mask, thrust_force_col], 
-                mode='markers', 
-                name='Penetration Rate', 
-                marker=dict(color='blue', size=5)
-            ), row=1, col=1)
-        else:
-            st.warning("Penetration Rate [mm/rev] column not found or not numeric in the dataset.")
+        if 'Penetration Rate [mm/rev]' in df.columns:
+            mask = df['Penetration Rate [mm/rev]'].notna() & df[thrust_force_col].notna()
+            fig.add_trace(
+                go.Scatter(
+                    x=df.loc[mask, 'Penetration Rate [mm/rev]'],
+                    y=df.loc[mask, thrust_force_col],
+                    mode='markers',
+                    name='vs Penetration Rate',
+                    marker=dict(
+                        color='blue',
+                        size=5,
+                        opacity=0.6
+                    )
+                ),
+                row=1, col=1
+            )
 
         # Plot 2: Thrust Force vs Average Speed
-        if 'Average Speed (mm/min)' in df.columns and pd.api.types.is_numeric_dtype(df['Average Speed (mm/min)']):
-            mask = df['Average Speed (mm/min)'].notna()
-            fig.add_trace(go.Scatter(
-                x=df.loc[mask, 'Average Speed (mm/min)'], 
-                y=df.loc[mask, thrust_force_col], 
-                mode='markers', 
-                name='Average Speed',
-                marker=dict(color='green', size=5)
-            ), row=2, col=1)
-        else:
-            st.warning("Average Speed (mm/min) column not found or not numeric in the dataset.")
+        if 'Average Speed (mm/min)' in df.columns:
+            mask = df['Average Speed (mm/min)'].notna() & df[thrust_force_col].notna()
+            fig.add_trace(
+                go.Scatter(
+                    x=df.loc[mask, 'Average Speed (mm/min)'],
+                    y=df.loc[mask, thrust_force_col],
+                    mode='markers',
+                    name='vs Average Speed',
+                    marker=dict(
+                        color='green',
+                        size=5,
+                        opacity=0.6
+                    )
+                ),
+                row=2, col=1
+            )
 
-        # Plot 3: Thrust Force vs Selected Advance Rate
-        if advance_rate_col and advance_rate_col in df.columns and pd.api.types.is_numeric_dtype(df[advance_rate_col]):
-            mask = df[advance_rate_col].notna()
-            fig.add_trace(go.Scatter(
-                x=df.loc[mask, advance_rate_col], 
-                y=df.loc[mask, thrust_force_col], 
-                mode='markers', 
-                name='Advance Rate',
-                marker=dict(color='red', size=5)
-            ), row=3, col=1)
-        else:
-            st.warning("Selected advance rate column not available or not numeric for plotting.")
+        # Plot 3: Thrust Force vs Advance Rate
+        if advance_rate_col and advance_rate_col in df.columns:
+            mask = df[advance_rate_col].notna() & df[thrust_force_col].notna()
+            fig.add_trace(
+                go.Scatter(
+                    x=df.loc[mask, advance_rate_col],
+                    y=df.loc[mask, thrust_force_col],
+                    mode='markers',
+                    name='vs Advance Rate',
+                    marker=dict(
+                        color='red',
+                        size=5,
+                        opacity=0.6
+                    )
+                ),
+                row=3, col=1
+            )
 
-        # Update layout with improved styling
+        # Update layout
         fig.update_layout(
-            height=1200, 
-            width=800, 
-            title_text="Thrust Force Relationships",
+            height=1200,
+            width=800,
+            title_text=f"Thrust Force Relationships - {thrust_force_col}",
             showlegend=True,
             template='plotly_white'
         )
-        
-        # Update axes labels with proper units
+
+        # Update axes labels
         fig.update_xaxes(title_text="Penetration Rate [mm/rev]", row=1, col=1)
         fig.update_xaxes(title_text="Average Speed [mm/min]", row=2, col=1)
-        fig.update_xaxes(title_text=advance_rate_col if advance_rate_col else "Advance Rate [mm/min]", row=3, col=1)
-        
+        fig.update_xaxes(title_text="Advance Rate [mm/min]", row=3, col=1)
+
         for i in range(1, 4):
-            fig.update_yaxes(title_text="Thrust Force [kN]", row=i, col=1)
+            fig.update_yaxes(title_text=f"{thrust_force_col} [kN]", row=i, col=1)
+
+        # Add trend lines
+        for i, (x_col, row) in enumerate([
+            ('Penetration Rate [mm/rev]', 1),
+            ('Average Speed (mm/min)', 2),
+            (advance_rate_col, 3)
+        ]):
+            if x_col in df.columns:
+                mask = df[x_col].notna() & df[thrust_force_col].notna()
+                x = df.loc[mask, x_col]
+                y = df.loc[mask, thrust_force_col]
+                
+                if len(x) > 1:  # Need at least 2 points for regression
+                    slope, intercept, r_value, _, _ = stats.linregress(x, y)
+                    x_range = np.linspace(x.min(), x.max(), 100)
+                    y_range = slope * x_range + intercept
+                    
+                    fig.add_trace(
+                        go.Scatter(
+                            x=x_range,
+                            y=y_range,
+                            mode='lines',
+                            name=f'Trend (R² = {r_value**2:.3f})',
+                            line=dict(color='black', dash='dash')
+                        ),
+                        row=row, col=1
+                    )
 
         st.plotly_chart(fig)
+
+        # Display correlation statistics
+        st.subheader("Correlation Statistics")
+        corr_stats = pd.DataFrame(columns=['Parameter', 'Correlation with Thrust Force', 'R-squared'])
+        
+        for param in ['Penetration Rate [mm/rev]', 'Average Speed (mm/min)', advance_rate_col]:
+            if param in df.columns:
+                mask = df[param].notna() & df[thrust_force_col].notna()
+                if mask.sum() > 1:
+                    correlation = df.loc[mask, [param, thrust_force_col]].corr().iloc[0, 1]
+                    _, _, r_value, _, _ = stats.linregress(df.loc[mask, param], df.loc[mask, thrust_force_col])
+                    corr_stats = corr_stats.append({
+                        'Parameter': param,
+                        'Correlation with Thrust Force': correlation,
+                        'R-squared': r_value**2
+                    }, ignore_index=True)
+        
+        st.dataframe(corr_stats.style.format({
+            'Correlation with Thrust Force': '{:.3f}',
+            'R-squared': '{:.3f}'
+        }))
+
     except Exception as e:
         st.error(f"Error creating thrust force plots: {e}")
 
