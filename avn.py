@@ -965,7 +965,6 @@ def safe_selectbox(label, options, suggested_option):
     except ValueError:
         index = 0  # Default to 'None' if suggested_option is not in options
     return st.sidebar.selectbox(label, options, index=index)
-
 # Main function
 def main():
     try:
