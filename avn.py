@@ -101,7 +101,20 @@ def calculate_torque(working_pressure, torque_constant, current_speed=None, n1=N
 
 # Function to calculate derived features
 
-def calculate_derived_features(df, time_col, selected_distance, revolution_col='None'):
+def calculate_derived_features(df, time_col, selected_distance, revolution_col='None', working_pressure_col, n1, torque_constant):
+        try:
+        # Calculate torque
+        if working_pressure_col and revolution_col and revolution_col != 'None':
+            df[working_pressure_col] = pd.to_numeric(df[working_pressure_col], errors='coerce')
+            df[revolution_col] = pd.to_numeric(df[revolution_col], errors='coerce')
+
+            # Calculate torque
+            df['Calculated torque [kNm]'] = df.apply(
+                lambda row: calculate_torque(row[working_pressure_col], torque_constant, row[revolution_col], n1)
+                if pd.notna(row[working_pressure_col]) and pd.notna(row[revolution_col]) else np.nan,
+                axis=1
+            )
+
     """
     Calculate average speed and penetration rate from drilling data.
     
