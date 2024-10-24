@@ -100,14 +100,14 @@ def calculate_torque(working_pressure, torque_constant, current_speed=None, n1=N
     return torque
 
 
-df = calculate_derived_features(
-    df=df,
-    time_col=time_column,
-    selected_distance=selected_distance,
-    working_pressure_col=working_pressure_col,
-    n1=n1,
-    torque_constant=torque_constant,
-    revolution_col=revolution_col
+def calculate_derived_features(
+    df,
+    time_col,
+    selected_distance,
+    working_pressure_col,
+    n1,
+    torque_constant,
+    revolution_col='None'
 )
     """
     Calculate derived features including torque, average speed and penetration rate from drilling data.
