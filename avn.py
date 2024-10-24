@@ -143,66 +143,107 @@ def calculate_derived_features(df, working_pressure_col, revolution_col, n1, tor
         st.error(f"Error calculating derived features: {e}")
         return df
 
+def handle_sampling_aggregation(df, column_name, aggregation_interval, mode='chainage'):
+    """
+    Handle data sampling and aggregation with proper error handling
+    """
+    try:
+        # Ensure the column is numeric
+        df[column_name] = pd.to_numeric(df[column_name], errors='coerce')
+        
+        if df[column_name].isna().all():
+            st.error(f"Column '{column_name}' contains no valid numeric values")
+            return df
+            
+        # Calculate the number of bins based on the data range
+        data_range = df[column_name].max() - df[column_name].min()
+        if mode == 'chainage':
+            # For chainage, use distance-based bins
+            n_bins = min(int(data_range / 1000), 1000)  # One bin per meter, max 1000 bins
+        else:
+            # For time, use fixed number of bins
+            n_bins = 1000
+            
+        n_bins = max(10, min(n_bins, len(df)))  # Ensure reasonable number of bins
+        
+        # Create bins
+        bins = pd.cut(df[column_name], bins=n_bins)
+        
+        # Calculate mid points for the bins
+        bin_midpoints = pd.Series([(x.left + x.right)/2 for x in bins])
+        
+        # Create a temporary column for grouping
+        df['temp_bin'] = bins
+        
+        # Identify numeric columns for aggregation
+        numeric_cols = df.select_dtypes(include=[np.number]).columns
+        
+        # Prepare aggregation dictionary
+        agg_dict = {col: 'mean' for col in numeric_cols if col != 'temp_bin'}
+        
+        # Perform aggregation
+        grouped = df.groupby('temp_bin').agg(agg_dict)
+        
+        # Reset index and add midpoints
+        result = grouped.reset_index(drop=True)
+        mid_col_name = 'Chainage_mid' if mode == 'chainage' else 'Time_mid'
+        result[mid_col_name] = bin_midpoints.values
+        
+        return result
+        
+    except Exception as e:
+        st.error(f"Error during sampling aggregation: {str(e)}")
+        return df
+
 def create_parameters_vs_chainage(df, selected_features, chainage_column, penetration_rates_available=False, aggregation=None):
+    """
+    Create parameters vs chainage visualization with proper error handling
+    """
     if not selected_features:
         st.warning("Please select at least one feature for the chainage plot.")
         return
-
-    # Create Chainage_mid if aggregation is requested
-    if aggregation:
-        try:
-            # Ensure chainage column is numeric
-            df[chainage_column] = pd.to_numeric(df[chainage_column], errors='coerce')
+    
+    try:
+        # Determine which chainage column to use
+        plot_chainage = chainage_column
+        if 'Chainage_mid' in df.columns:
+            plot_chainage = 'Chainage_mid'
+            st.info("Using aggregated chainage values for plotting.")
+        
+        # Verify numeric data
+        plotting_df = df.copy()
+        for feature in selected_features:
+            if feature in df.columns:
+                plotting_df[feature] = pd.to_numeric(plotting_df[feature], errors='coerce')
+        
+        # Filter features that actually contain numeric data
+        valid_features = [f for f in selected_features 
+                         if f in plotting_df.columns 
+                         and pd.to_numeric(plotting_df[f], errors='coerce').notna().any()]
+        
+        if not valid_features:
+            st.warning("None of the selected features contain valid numeric data.")
+            return
             
-            # Calculate mid-points only if data is numeric
-            if pd.api.types.is_numeric_dtype(df[chainage_column]):
-                window_size = 2  # Adjust as needed
-                df['Chainage_mid'] = df[chainage_column].rolling(window=window_size, center=True).mean()
-            else:
-                st.warning(f"Chainage column '{chainage_column}' contains non-numeric values.")
-                df['Chainage_mid'] = df[chainage_column]
-        except Exception as e:
-            st.warning(f"Could not create Chainage_mid: {str(e)}")
-            df['Chainage_mid'] = df[chainage_column]
-
-    # Determine which chainage column to use
-    plot_chainage = 'Chainage_mid' if 'Chainage_mid' in df.columns else chainage_column
-
-    # Convert selected features to numeric, dropping non-convertible values
-    numeric_df = df.copy()
-    for feature in selected_features:
-        if feature in df.columns:
-            numeric_df[feature] = pd.to_numeric(numeric_df[feature], errors='coerce')
-
-    # Sort the data by the chosen chainage column
-    numeric_df = numeric_df.sort_values(by=plot_chainage)
-
-    colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEEAD', '#D4A5A5',
-              '#9B6B6B', '#E9967A', '#4682B4', '#6B8E23']
-
-    # Filter for actually available numeric features
-    available_features = [f for f in selected_features if f in numeric_df.columns 
-                        and pd.api.types.is_numeric_dtype(numeric_df[f])
-                        and not numeric_df[f].isna().all()]
-
-    if not available_features:
-        st.warning("None of the selected features contain valid numeric data.")
-        return
-
-    fig = make_subplots(rows=len(available_features), cols=1,
-                        shared_xaxes=True,
-                        subplot_titles=available_features,
-                        vertical_spacing=0.1)
-
-    for i, feature in enumerate(available_features, start=1):
-        try:
-            # Drop NaN values for this specific feature
-            feature_data = numeric_df[[plot_chainage, feature]].dropna()
+        # Create subplot figure
+        fig = make_subplots(
+            rows=len(valid_features),
+            cols=1,
+            shared_xaxes=True,
+            subplot_titles=valid_features,
+            vertical_spacing=0.1
+        )
+        
+        # Plot each feature
+        colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEEAD']
+        for i, feature in enumerate(valid_features, start=1):
+            # Remove NaN values for this feature
+            feature_data = plotting_df[[plot_chainage, feature]].dropna()
             
             if len(feature_data) == 0:
                 st.warning(f"No valid data points for feature '{feature}'")
                 continue
-
+                
             fig.add_trace(
                 go.Scatter(
                     x=feature_data[plot_chainage],
@@ -214,27 +255,7 @@ def create_parameters_vs_chainage(df, selected_features, chainage_column, penetr
                 row=i,
                 col=1
             )
-
-            # Special handling for penetration rates
-            if feature in ['Penetration Rate [mm/rev]', 'Sensor-based Penetration Rate'] and penetration_rates_available:
-                line_style = 'dash' if feature == 'Penetration Rate [mm/rev]' else 'dot'
-                line_color = 'blue' if feature == 'Penetration Rate [mm/rev]' else 'green'
-                
-                pen_rate_data = numeric_df[[plot_chainage, 'Penetration Rate [mm/rev]']].dropna()
-                
-                if len(pen_rate_data) > 0:
-                    fig.add_trace(
-                        go.Scatter(
-                            x=pen_rate_data[plot_chainage],
-                            y=pen_rate_data['Penetration Rate [mm/rev]'],
-                            mode='lines',
-                            name=f'{"Calculated" if feature == "Penetration Rate [mm/rev]" else "Sensor-based"} Penetration Rate',
-                            line=dict(color=line_color, dash=line_style)
-                        ),
-                        row=i,
-                        col=1
-                    )
-
+            
             # Update y-axis titles
             fig.update_yaxes(
                 title_text=feature,
@@ -242,30 +263,27 @@ def create_parameters_vs_chainage(df, selected_features, chainage_column, penetr
                 col=1,
                 title_standoff=40
             )
-
-        except Exception as e:
-            st.warning(f"Error plotting feature '{feature}': {str(e)}")
-
-    # Update layout
-    fig.update_layout(
-        height=300 * len(available_features),
-        width=1200,
-        title_text='Parameters vs Chainage',
-        showlegend=True,
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=1.02,
-            xanchor="right",
-            x=1
-        ),
-        margin=dict(t=100, l=150, r=50, b=50)
-    )
-
-    # Update x-axis title
-    fig.update_xaxes(title_text='Chainage [mm]', row=len(available_features), col=1)
-
-    st.plotly_chart(fig, use_container_width=True)
+        
+        # Update layout
+        fig.update_layout(
+            height=300 * len(valid_features),
+            width=1200,
+            title_text='Parameters vs Chainage',
+            showlegend=True,
+            margin=dict(t=100, l=150, r=50, b=50)
+        )
+        
+        # Update x-axis title
+        fig.update_xaxes(
+            title_text='Chainage [mm]',
+            row=len(valid_features),
+            col=1
+        )
+        
+        st.plotly_chart(fig, use_container_width=True)
+        
+    except Exception as e:
+        st.error(f"Error creating visualization: {str(e)}")
 
 def create_features_vs_time(df, selected_features, time_column, sampling_rate):
     if not selected_features:
@@ -775,32 +793,7 @@ def create_multi_axis_violin_plots(df, selected_features):
     except Exception as e:
         st.error(f"Error creating violin plots: {e}")
 
-# Updated function to handle sampling aggregation for time-based data
-def handle_sampling_aggregation(df, time_column, aggregation, agg_type='time'):
-    try:
-        df = df.sort_values(by=time_column)
-        if agg_type == 'time':
-            if pd.api.types.is_numeric_dtype(df[time_column]):
-                bins = np.arange(df[time_column].min(), df[time_column].max() + float(aggregation.rstrip('S').rstrip('T')), float(aggregation.rstrip('S').rstrip('T')))
-                df['time_bin'] = pd.cut(df[time_column], bins=bins)
-                df_agg = df.groupby('time_bin').mean().reset_index()
-                df_agg['Time_mid'] = df_agg['time_bin'].apply(lambda x: x.mid if pd.notnull(x) else np.nan)
-                return df_agg
-            else:
-                # For datetime, resampling is handled outside
-                return df
-        elif agg_type == 'chainage':
-            # Implement chainage-based aggregation if needed
-            bins = np.arange(df[time_column].min(), df[time_column].max() + float(aggregation.rstrip('S').rstrip('T')), float(aggregation.rstrip('S').rstrip('T')))
-            df['chainage_bin'] = pd.cut(df[time_column], bins=bins)
-            df_agg = df.groupby('chainage_bin').mean().reset_index()
-            df_agg['Chainage_mid'] = df_agg['chainage_bin'].apply(lambda x: x.mid if pd.notnull(x) else np.nan)
-            return df_agg
-        else:
-            return df
-    except Exception as e:
-        st.error(f"Error in sampling aggregation: {e}")
-        return df
+
 
 # Updated function to create thrust force plots
 def create_thrust_force_plots(df, selected_features):
@@ -1114,56 +1107,48 @@ def main():
                         st.warning("Please select a valid working pressure column.")
                 elif selected_option == 'Parameters vs Chainage':
                     if selected_features:
-                        # **Enhancement 3: Sampling Rate Selection for Chainage-based Plots**
-                        sampling_rate_chainage = st.sidebar.selectbox(
-                            "Select Data Sampling Frequency for Chainage-based Plots",
-                            ['Auto Detect', 'Milliseconds', 'Seconds', 'Minutes']
-                        )
-
-                        # Determine aggregation based on sampling rate
-                        if sampling_rate_chainage == 'Auto Detect':
-                            # Automatically determine based on chainage differences
-                            chainage_diffs = df_viz['Chainage [mm]'].diff().dropna()
-                            median_diff_chainage = chainage_diffs.median()
-                            st.sidebar.write(f"Detected average chainage interval: {median_diff_chainage} mm")
-                            if median_diff_chainage < 1:
-                                aggregation_chainage = '1S'  # Every second (example)
+                        try:
+                            # Sampling rate selection
+                            sampling_rate_chainage = st.sidebar.selectbox(
+                                "Select Data Sampling Frequency",
+                                ['None', 'Low (1000 samples)', 'Medium (2000 samples)', 'High (5000 samples)']
+                            )
+                            
+                            # Determine number of samples based on selection
+                            if sampling_rate_chainage != 'None':
+                                if sampling_rate_chainage == 'Low (1000 samples)':
+                                    n_samples = 1000
+                                elif sampling_rate_chainage == 'Medium (2000 samples)':
+                                    n_samples = 2000
+                                else:
+                                    n_samples = 5000
+                                    
+                                # Perform aggregation
+                                plotting_df = handle_sampling_aggregation(
+                                    df_viz,
+                                    'Chainage [mm]',
+                                    n_samples,
+                                    mode='chainage'
+                                )
                             else:
-                                aggregation_chainage = '1S'  # Adjust based on actual needs
-                        else:
-                            if sampling_rate_chainage == 'Milliseconds':
-                                aggregation_chainage = '1S'  # Every second
-                            elif sampling_rate_chainage == 'Seconds':
-                                aggregation_chainage = '1S'  # Every second
-                            elif sampling_rate_chainage == 'Minutes':
-                                aggregation_chainage = '1T'  # Every minute
-                            else:
-                                aggregation_chainage = '1S'  # Default to second
-
-                        # Aggregate data based on selected interval
-                        if aggregation_chainage.startswith('1S') or aggregation_chainage.startswith('5S') or aggregation_chainage.startswith('10S') or aggregation_chainage.startswith('30S') or \
-                           aggregation_chainage.startswith('1T') or aggregation_chainage.startswith('5T') or aggregation_chainage.startswith('10T') or aggregation_chainage.startswith('30T'):
-                            if pd.api.types.is_numeric_dtype(df_viz['Chainage [mm]']):
-                                # For chainage-based, use binning
-                                aggregated_df_chainage = handle_sampling_aggregation(df_viz, 'Chainage [mm]', aggregation_chainage, 'chainage')
-                                if 'Chainage_mid' not in aggregated_df_chainage.columns:
-                                    st.error("Aggregation failed to create 'Chainage_mid' column.")
-                                    aggregated_df_chainage = df_viz
-                            else:
-                                st.warning("Chainage column is not numeric. Skipping aggregation.")
-                                aggregated_df_chainage = df_viz
-                            st.sidebar.write(f"Data aggregated every {aggregation_chainage}")
-                        else:
-                            st.sidebar.warning("Unknown aggregation interval. Skipping aggregation.")
-                            aggregated_df_chainage = df_viz
-
-                        create_parameters_vs_chainage(
-                            aggregated_df_chainage, 
-                            selected_features, 
-                            'Chainage [mm]',  # Pass the original chainage column
-                            penetration_rates_available=('Penetration Rate [mm/rev]' in aggregated_df_chainage.columns), 
-                            aggregation=aggregation_chainage
-                        )
+                                plotting_df = df_viz
+                            
+                            # Create visualization
+                            create_parameters_vs_chainage(
+                                plotting_df,
+                                selected_features,
+                                'Chainage [mm]',
+                                penetration_rates_available=('Penetration Rate [mm/rev]' in plotting_df.columns)
+                            )
+                        except Exception as e:
+                            st.error(f"Error processing chainage data: {str(e)}")
+                            st.write("Using original data without aggregation...")
+                            create_parameters_vs_chainage(
+                                df_viz,
+                                selected_features,
+                                'Chainage [mm]',
+                                penetration_rates_available=('Penetration Rate [mm/rev]' in df_viz.columns)
+                            )
                     else:
                         st.warning("Please select features to visualize against chainage.")
                 elif selected_option == 'Box Plots':
