@@ -107,8 +107,7 @@ def calculate_derived_features(
     working_pressure_col,
     n1,
     torque_constant,
-    revolution_col='None'
-)
+    revolution_col='None'):
     """
     Calculate derived features including torque, average speed and penetration rate from drilling data.
     
