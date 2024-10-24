@@ -1222,8 +1222,7 @@ def main():
                         st.warning("Please select features for statistical analysis.")
                 elif selected_option == 'Features vs Time' and time_column:
                     handle_features_vs_time(df_viz, time_column, selected_features)
-                    else:
-                        st.warning("Please select features to visualize over time.")
+
                 elif selected_option == 'Pressure Distribution' and time_column:
                     if 'Working pressure [bar]' in df_viz.columns:
                         renamed_pressure_col = 'Working pressure [bar]'
