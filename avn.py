@@ -107,7 +107,8 @@ def calculate_derived_features(
     working_pressure_col,
     n1,
     torque_constant,
-    revolution_col='None'):
+    revolution_col='None'
+):
     """
     Calculate derived features including torque, average speed and penetration rate from drilling data.
     
@@ -116,8 +117,8 @@ def calculate_derived_features(
     time_col (str): Name of the column containing time data
     selected_distance (str): Name of the column containing distance/chainage data
     working_pressure_col (str): Name of the column containing working pressure data
-    n1 (float): Coefficient for torque calculation
-    torque_constant (float): Constant value for torque calculation
+    n1 (float): Critical speed threshold for torque calculation
+    torque_constant (float): Torque constant for calculations
     revolution_col (str, optional): Name of the column containing revolution/RPM data. Defaults to 'None'
     
     Returns:
@@ -133,52 +134,79 @@ def calculate_derived_features(
             missing_cols = [col for col in required_cols if col not in df.columns]
             raise ValueError(f"Missing required columns: {missing_cols}")
 
+        # Create a copy of the dataframe and sort by distance
+        df = df.copy().sort_values(by=selected_distance)
+
         # Initialize new columns with NaN
         df['Average Speed (mm/min)'] = np.nan
         df['Penetration Rate [mm/rev]'] = np.nan
         df['Calculated torque [kNm]'] = np.nan
 
-        # Calculate torque if required columns are present
-        if working_pressure_col and revolution_col != 'None':
-            df[working_pressure_col] = pd.to_numeric(df[working_pressure_col], errors='coerce')
+        # Convert columns to numeric
+        df[working_pressure_col] = pd.to_numeric(df[working_pressure_col], errors='coerce')
+        if revolution_col != 'None':
             df[revolution_col] = pd.to_numeric(df[revolution_col], errors='coerce')
-            
-            # Calculate torque using vectorized operations
-            mask = pd.notna(df[working_pressure_col]) & pd.notna(df[revolution_col])
-            df.loc[mask, 'Calculated torque [kNm]'] = (
-                df.loc[mask, working_pressure_col] * torque_constant / 
-                (df.loc[mask, revolution_col] * n1)
-            )
 
+        # Calculate torque using vectorized operations
+        if working_pressure_col and revolution_col != 'None':
+            # Create mask for valid data
+            mask = pd.notna(df[working_pressure_col]) & pd.notna(df[revolution_col])
+            
+            # Initialize torque column
+            df['Calculated torque [kNm]'] = np.nan
+            
+            # Calculate torque for speeds below n1
+            low_speed_mask = mask & (df[revolution_col] < n1)
+            df.loc[low_speed_mask, 'Calculated torque [kNm]'] = (
+                df.loc[low_speed_mask, working_pressure_col] * torque_constant
+            )
+            
+            # Calculate torque for speeds above or equal to n1
+            high_speed_mask = mask & (df[revolution_col] >= n1)
+            df.loc[high_speed_mask, 'Calculated torque [kNm]'] = (
+                (n1 / df.loc[high_speed_mask, revolution_col]) * 
+                torque_constant * 
+                df.loc[high_speed_mask, working_pressure_col]
+            )
+            
+            # Round torque values
+            df['Calculated torque [kNm]'] = df['Calculated torque [kNm]'].round(2)
+
+        # Calculate speed and penetration rate
         if time_col and selected_distance:
             # Convert distance to numeric
             df[selected_distance] = pd.to_numeric(df[selected_distance], errors='coerce')
             
             # Calculate time difference
             if pd.api.types.is_datetime64_any_dtype(df[time_col]):
-                time_diff = df[time_col].diff()
-                time_diff_minutes = time_diff.dt.total_seconds() / 60
+                time_diff = df[time_col].diff().dt.total_seconds() / 60  # Convert to minutes
             else:
-                time_diff = df[time_col].diff()
-                time_diff_minutes = time_diff / 60000  # Convert milliseconds to minutes
+                time_diff = df[time_col].diff() / 60000  # Convert milliseconds to minutes
 
             # Calculate distance difference
             distance_diff = df[selected_distance].diff()
 
-            # Calculate speed for each row
-            mask = time_diff_minutes > 0
-            df.loc[mask, 'Average Speed (mm/min)'] = distance_diff[mask] / time_diff_minutes[mask]
+            # Calculate speed (mm/min)
+            mask = time_diff > 0
+            df.loc[mask, 'Average Speed (mm/min)'] = (
+                distance_diff[mask] / time_diff[mask]
+            )
             
-            # Forward fill speed values
-            df['Average Speed (mm/min)'] = df['Average Speed (mm/min)'].fillna(method='ffill')
+            # Remove negative and zero speeds
+            df.loc[df['Average Speed (mm/min)'] <= 0, 'Average Speed (mm/min)'] = np.nan
             
             # Calculate penetration rate if revolution data is available
             if revolution_col != 'None':
-                df[revolution_col] = pd.to_numeric(df[revolution_col], errors='coerce')
-                mask = df[revolution_col] != 0
+                mask = (df[revolution_col] > 0) & (df['Average Speed (mm/min)'] > 0)
                 df.loc[mask, 'Penetration Rate [mm/rev]'] = (
                     df.loc[mask, 'Average Speed (mm/min)'] / df.loc[mask, revolution_col]
                 )
+
+        # Clean up the data
+        # Remove negative values
+        for col in ['Calculated torque [kNm]', 'Average Speed (mm/min)', 'Penetration Rate [mm/rev]']:
+            if col in df.columns:
+                df.loc[df[col] < 0, col] = np.nan
 
         # Replace infinite values with NaN
         df = df.replace([np.inf, -np.inf], np.nan)
