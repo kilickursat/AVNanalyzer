@@ -978,6 +978,120 @@ def safe_selectbox(label, options, suggested_option):
     except ValueError:
         index = 0  # Default to 'None' if suggested_option is not in options
     return st.sidebar.selectbox(label, options, index=index)
+def detect_time_resolution(df, time_column):
+    """
+    Detect the time resolution of the dataset.
+    
+    Parameters:
+    df (pd.DataFrame): Input DataFrame
+    time_column (str): Name of the time column
+    
+    Returns:
+    str: Detected time resolution ('millisecond', 'second', 'minute')
+    float: Median time difference
+    """
+    if pd.api.types.is_numeric_dtype(df[time_column]):
+        time_diffs = df[time_column].diff().dropna()
+        median_diff = time_diffs.median()
+        
+        if median_diff < 1:  # Less than 1 unit
+            return 'millisecond', median_diff
+        elif median_diff < 60:  # Less than 60 units
+            return 'second', median_diff
+        else:
+            return 'minute', median_diff
+    else:
+        time_diffs = df[time_column].diff().dropna().dt.total_seconds()
+        median_diff = time_diffs.median()
+        
+        if median_diff < 1:  # Less than 1 second
+            return 'millisecond', median_diff
+        elif median_diff < 60:  # Less than 1 minute
+            return 'second', median_diff
+        else:
+            return 'minute', median_diff
+
+def aggregate_time_data(df, time_column, time_resolution):
+    """
+    Aggregate data based on detected or selected time resolution.
+    
+    Parameters:
+    df (pd.DataFrame): Input DataFrame
+    time_column (str): Name of the time column
+    time_resolution (str): Time resolution ('millisecond', 'second', 'minute')
+    
+    Returns:
+    pd.DataFrame: Aggregated DataFrame
+    """
+    aggregation_rules = {
+        'millisecond': {'window': '10ms', 'description': 'mean of every 10 milliseconds'},
+        'second': {'window': '10s', 'description': 'mean of every 10 seconds'},
+        'minute': {'window': None, 'description': 'original minute-based data'}
+    }
+    
+    rule = aggregation_rules.get(time_resolution)
+    if not rule:
+        st.error(f"Unsupported time resolution: {time_resolution}")
+        return df
+    
+    if rule['window'] is None:
+        return df  # Return original data for minute-based resolution
+    
+    try:
+        if pd.api.types.is_numeric_dtype(df[time_column]):
+            # For numeric time columns
+            bin_size = 10 if time_resolution == 'millisecond' else 10
+            df['time_bins'] = df[time_column] // bin_size * bin_size
+            aggregated = df.groupby('time_bins').mean().reset_index()
+            aggregated = aggregated.rename(columns={'time_bins': time_column})
+        else:
+            # For datetime columns
+            df_indexed = df.set_index(time_column)
+            aggregated = df_indexed.resample(rule['window']).mean().reset_index()
+        
+        st.sidebar.write(f"Data aggregated using {rule['description']}")
+        return aggregated
+    
+    except Exception as e:
+        st.error(f"Error during aggregation: {str(e)}")
+        return df
+
+def handle_features_vs_time(df, time_column, selected_features):
+    """
+    Main function to handle time-based visualization logic.
+    
+    Parameters:
+    df (pd.DataFrame): Input DataFrame
+    time_column (str): Name of the time column
+    selected_features (list): List of selected features to visualize
+    """
+    if not selected_features:
+        st.warning("Please select features to visualize over time.")
+        return
+    
+    # Time resolution selection
+    sampling_rate = st.sidebar.selectbox(
+        "Select Data Sampling Rate",
+        ['Auto Detect', 'Millisecond', 'Second', 'Minute']
+    )
+    
+    # Detect or use selected time resolution
+    if sampling_rate == 'Auto Detect':
+        resolution, median_diff = detect_time_resolution(df, time_column)
+        st.sidebar.write(f"Detected time resolution: {resolution} (median interval: {median_diff:.2f})")
+    else:
+        resolution = sampling_rate.lower()
+    
+    # Aggregate data
+    aggregated_df = aggregate_time_data(df, time_column, resolution)
+    
+    # Create visualization
+    create_features_vs_time(
+        aggregated_df,
+        selected_features,
+        'Time_mid' if 'Time_mid' in aggregated_df.columns else time_column,
+        resolution
+    )
 
 def main():
     try:
@@ -1107,57 +1221,7 @@ def main():
                     else:
                         st.warning("Please select features for statistical analysis.")
                 elif selected_option == 'Features vs Time' and time_column:
-                    if selected_features:
-                        # **Enhancement 2: Sampling Rate Selection for Features vs Time**
-                        sampling_rate_time = st.sidebar.selectbox(
-                            "Select Data Sampling Rate for Time-based Plots",
-                            ['Auto Detect', 'Milliseconds', 'Seconds', 'Minutes']
-                        )
-
-                        # Determine aggregation based on sampling rate
-                        if sampling_rate_time == 'Auto Detect':
-                            if pd.api.types.is_numeric_dtype(df_viz[time_column]):
-                                time_diffs = df_viz[time_column].diff().dropna()
-                                median_diff = time_diffs.median()
-                                st.sidebar.write(f"Detected average sampling interval: {median_diff} units")
-                                if median_diff < 1000:  # Assuming milliseconds
-                                    aggregation_time = '10S'  # Every 10 seconds
-                                elif 1000 <= median_diff < 60000:
-                                    aggregation_time = '1S'  # Every second
-                                else:
-                                    aggregation_time = '1T'  # Every minute
-                            else:
-                                time_diffs = df_viz[time_column].diff().dropna().dt.total_seconds()
-                                median_diff = time_diffs.median()
-                                st.sidebar.write(f"Detected average sampling interval: {median_diff} seconds")
-                                if median_diff < 1:
-                                    aggregation_time = '10S'  # Every 10 seconds
-                                elif 1 <= median_diff < 60:
-                                    aggregation_time = '1S'  # Every second
-                                else:
-                                    aggregation_time = '1T'  # Every minute
-                        else:
-                            if sampling_rate_time == 'Milliseconds':
-                                aggregation_time = '10S'  # Every 10 seconds
-                            elif sampling_rate_time == 'Seconds':
-                                aggregation_time = '1S'  # Every second
-                            elif sampling_rate_time == 'Minutes':
-                                aggregation_time = '1T'  # Every minute
-                            else:
-                                aggregation_time = '1S'  # Default to second
-
-                        # Aggregate data based on selected interval
-                        if pd.api.types.is_numeric_dtype(df_viz[time_column]):
-                            # For relative time (numeric), binning based on aggregation
-                            aggregated_df_time = handle_sampling_aggregation(df_viz, time_column, aggregation_time, 'time')
-                        else:
-                            # For datetime, resampling
-                            df_viz_time = df_viz.set_index(time_column)
-                            aggregated_df_time = df_viz_time.resample(aggregation_time).mean().reset_index()
-
-                        st.sidebar.write(f"Data aggregated every {aggregation_time}")
-
-                        create_features_vs_time(aggregated_df_time, selected_features, 'Time_mid' if 'Time_mid' in aggregated_df_time.columns else time_column, sampling_rate_time)
+                    handle_features_vs_time(df_viz, time_column, selected_features)
                     else:
                         st.warning("Please select features to visualize over time.")
                 elif selected_option == 'Pressure Distribution' and time_column:
