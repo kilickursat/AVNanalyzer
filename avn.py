@@ -869,7 +869,6 @@ def create_multi_axis_violin_plots(df, selected_features):
 
 
 
-# Updated function to create thrust force plots
 def create_thrust_force_plots(df, all_features):
     """
     Create scatter plots of thrust force against selected features.
@@ -898,9 +897,19 @@ def create_thrust_force_plots(df, all_features):
                             if f != thrust_force_col 
                             and pd.api.types.is_numeric_dtype(df[f])]
         
+        # Default selected features if none are selected
+        default_features = []
+        if 'Calculated torque [kNm]' in available_features:
+            default_features.append('Calculated torque [kNm]')
+        if 'Average Speed (mm/min)' in available_features and not df['Average Speed (mm/min)'].isna().all():
+            default_features.append('Average Speed (mm/min)')
+        if 'Penetration Rate [mm/rev]' in available_features and not df['Penetration Rate [mm/rev]'].isna().all():
+            default_features.append('Penetration Rate [mm/rev]')
+
         plot_features = st.multiselect(
             "Select Features to Plot Against Thrust Force",
-            available_features
+            available_features,
+            default=default_features
         )
 
         if not plot_features:
@@ -1084,7 +1093,7 @@ def main():
                 elif selected_option == 'Thrust Force Plots':
                     create_thrust_force_plots(
                         df_viz, 
-                        selected_features  # Pass all selected features
+                        df_viz.columns.tolist()  # Pass all selected features
                     )
                 
                 elif selected_option == 'Correlation Heatmap':
