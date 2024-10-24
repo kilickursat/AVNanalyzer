@@ -842,9 +842,16 @@ def create_multi_axis_violin_plots(df, selected_features):
 
 
 # Updated function to create thrust force plots
-def create_thrust_force_plots(df, selected_features):
+def create_thrust_force_plots(df, all_features):
+    """
+    Create scatter plots of thrust force against selected features.
+    
+    Parameters:
+    df (pd.DataFrame): The input DataFrame
+    all_features (list): List of all available features for selection
+    """
     try:
-        # Let user select thrust force column
+        # Find potential thrust force columns
         thrust_force_cols = [col for col in df.columns 
                            if any(kw in col.lower() for kw in [
                                'thrust force', 'vorschubkraft', 'kraft', 'kraft_max', 
@@ -855,34 +862,42 @@ def create_thrust_force_plots(df, selected_features):
             st.warning("No thrust force columns found in the dataset.")
             return
 
+        # Let user select thrust force column
         thrust_force_col = st.selectbox("Select Thrust Force Column", thrust_force_cols)
         
-        # Convert thrust force to numeric if needed
-        df[thrust_force_col] = pd.to_numeric(df[thrust_force_col], errors='coerce')
-
         # Let user select features to plot against thrust force
+        available_features = [f for f in all_features 
+                            if f != thrust_force_col 
+                            and pd.api.types.is_numeric_dtype(df[f])]
+        
         plot_features = st.multiselect(
             "Select Features to Plot Against Thrust Force",
-            [f for f in selected_features if f != thrust_force_col and pd.api.types.is_numeric_dtype(df[f])],
-            default=['Penetration Rate [mm/rev]', 'Advance rate [mm/min]']  # Default selections
+            available_features
         )
 
         if not plot_features:
             st.warning("Please select at least one feature to plot against thrust force.")
             return
 
-        fig = make_subplots(rows=len(plot_features), cols=1,
-                           subplot_titles=[f"Thrust Force vs {feature}" for feature in plot_features],
-                           vertical_spacing=0.1)
+        # Create subplots
+        fig = make_subplots(
+            rows=len(plot_features), 
+            cols=1,
+            subplot_titles=[f"Thrust Force vs {feature}" for feature in plot_features],
+            vertical_spacing=0.1
+        )
 
-        colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEEAD', '#D4A5A5',
-                  '#9B6B6B', '#E9967A', '#4682B4', '#6B8E23']
+        # Colors for different plots
+        colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEEAD']
 
+        # Create plots
         for i, feature in enumerate(plot_features, start=1):
+            # Filter valid data points
             mask = df[feature].notna() & df[thrust_force_col].notna()
             x = df.loc[mask, feature]
             y = df.loc[mask, thrust_force_col]
 
+            # Add scatter plot
             fig.add_trace(
                 go.Scatter(
                     x=x,
@@ -899,68 +914,23 @@ def create_thrust_force_plots(df, selected_features):
                 col=1
             )
 
-            # Add trend line
-            if len(x) > 1 and x.nunique() > 1:
-                slope, intercept, r_value, _, _ = stats.linregress(x, y)
-                x_range = np.linspace(x.min(), x.max(), 100)
-                y_range = slope * x_range + intercept
-                fig.add_trace(
-                    go.Scatter(
-                        x=x_range,
-                        y=y_range,
-                        mode='lines',
-                        name=f'Trend (R² = {r_value**2:.3f})',
-                        line=dict(color='black', dash='dash')
-                    ),
-                    row=i,
-                    col=1
-                )
-            else:
-                st.warning(f"Cannot perform linear regression for '{feature}' due to insufficient data.")
-
-            # Update y-axis titles
+            # Update axes labels
             fig.update_yaxes(title_text=f"{thrust_force_col} [kN]", row=i, col=1)
             fig.update_xaxes(title_text=feature, row=i, col=1)
 
         # Update layout
         fig.update_layout(
-            height=400 * len(plot_features),  # Dynamic height based on number of plots
+            height=400 * len(plot_features),
             width=1000,
-            title_text=f"Thrust Force Relationships - {thrust_force_col}",
+            title_text="Thrust Force Relationships",
             showlegend=True,
             template='plotly_white'
         )
 
         st.plotly_chart(fig, use_container_width=True)
 
-        # Display correlation statistics
-        st.subheader("Correlation Statistics")
-        corr_stats = pd.DataFrame(columns=['Parameter', 'Correlation with Thrust Force', 'R-squared'])
-        
-        for feature in plot_features:
-            if feature in df.columns:
-                mask = df[feature].notna() & df[thrust_force_col].notna()
-                if mask.sum() > 1 and df.loc[mask, feature].nunique() > 1:
-                    correlation = df.loc[mask, [feature, thrust_force_col]].corr().iloc[0, 1]
-                    _, _, r_value, _, _ = stats.linregress(df.loc[mask, feature], df.loc[mask, thrust_force_col])
-                    corr_stats = corr_stats.append({
-                        'Parameter': feature,
-                        'Correlation with Thrust Force': correlation,
-                        'R-squared': r_value**2
-                    }, ignore_index=True)
-                else:
-                    st.warning(f"Insufficient data to calculate correlation for '{feature}'.")
-
-        if not corr_stats.empty:
-            st.dataframe(corr_stats.style.format({
-                'Correlation with Thrust Force': '{:.3f}',
-                'R-squared': '{:.3f}'
-            }))
-        else:
-            st.info("No correlation statistics available.")
-
     except Exception as e:
-        st.error(f"Error creating thrust force plots: {e}")
+        st.error(f"Error creating thrust force plots: {str(e)}")
 
 def safe_selectbox(label, options, suggested_option):
     try:
