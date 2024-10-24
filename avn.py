@@ -148,91 +148,107 @@ def create_parameters_vs_chainage(df, selected_features, chainage_column, penetr
         st.warning("Please select at least one feature for the chainage plot.")
         return
 
-    # Determine which chainage column to use
-    if 'Chainage_mid' in df.columns:
-        plot_chainage = 'Chainage_mid'
-    else:
-        plot_chainage = chainage_column
-        st.info(f"'Chainage_mid' not found. Using '{chainage_column}' instead.")
+    # Create Chainage_mid if aggregation is requested
+    if aggregation:
+        try:
+            # Ensure chainage column is numeric
+            df[chainage_column] = pd.to_numeric(df[chainage_column], errors='coerce')
+            
+            # Calculate mid-points only if data is numeric
+            if pd.api.types.is_numeric_dtype(df[chainage_column]):
+                window_size = 2  # Adjust as needed
+                df['Chainage_mid'] = df[chainage_column].rolling(window=window_size, center=True).mean()
+            else:
+                st.warning(f"Chainage column '{chainage_column}' contains non-numeric values.")
+                df['Chainage_mid'] = df[chainage_column]
+        except Exception as e:
+            st.warning(f"Could not create Chainage_mid: {str(e)}")
+            df['Chainage_mid'] = df[chainage_column]
 
-    # Ensure the chosen chainage column exists
-    if plot_chainage not in df.columns:
-        st.error(f"Chainage column '{plot_chainage}' not found in the dataset.")
-        return
+    # Determine which chainage column to use
+    plot_chainage = 'Chainage_mid' if 'Chainage_mid' in df.columns else chainage_column
+
+    # Convert selected features to numeric, dropping non-convertible values
+    numeric_df = df.copy()
+    for feature in selected_features:
+        if feature in df.columns:
+            numeric_df[feature] = pd.to_numeric(numeric_df[feature], errors='coerce')
 
     # Sort the data by the chosen chainage column
-    df = df.sort_values(by=plot_chainage)
+    numeric_df = numeric_df.sort_values(by=plot_chainage)
 
     colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEEAD', '#D4A5A5',
               '#9B6B6B', '#E9967A', '#4682B4', '#6B8E23']
 
-    available_features = [f for f in selected_features if f in df.columns and pd.api.types.is_numeric_dtype(df[f])]
+    # Filter for actually available numeric features
+    available_features = [f for f in selected_features if f in numeric_df.columns 
+                        and pd.api.types.is_numeric_dtype(numeric_df[f])
+                        and not numeric_df[f].isna().all()]
 
     if not available_features:
-        st.warning("None of the selected numeric features are available in the dataset.")
+        st.warning("None of the selected features contain valid numeric data.")
         return
 
     fig = make_subplots(rows=len(available_features), cols=1,
                         shared_xaxes=True,
                         subplot_titles=available_features,
-                        vertical_spacing=0.1)  # Increased spacing between subplots
+                        vertical_spacing=0.1)
 
     for i, feature in enumerate(available_features, start=1):
         try:
-            y_data = df[feature]
-            feature_name = feature
+            # Drop NaN values for this specific feature
+            feature_data = numeric_df[[plot_chainage, feature]].dropna()
+            
+            if len(feature_data) == 0:
+                st.warning(f"No valid data points for feature '{feature}'")
+                continue
 
             fig.add_trace(
                 go.Scatter(
-                    x=df[plot_chainage],
-                    y=y_data,
+                    x=feature_data[plot_chainage],
+                    y=feature_data[feature],
                     mode='lines',
-                    name=feature_name,
+                    name=feature,
                     line=dict(color=colors[i % len(colors)], width=2)
                 ),
                 row=i,
                 col=1
             )
 
-            # Plot Penetration Rates if available
-            if feature == 'Penetration Rate [mm/rev]' and penetration_rates_available:
-                fig.add_trace(
-                    go.Scatter(
-                        x=df[plot_chainage],
-                        y=df['Penetration Rate [mm/rev]'],
-                        mode='lines',
-                        name='Calculated Penetration Rate',
-                        line=dict(color='blue', dash='dash')
-                    ),
-                    row=i,
-                    col=1
-                )
-            elif feature == 'Sensor-based Penetration Rate' and penetration_rates_available:
-                fig.add_trace(
-                    go.Scatter(
-                        x=df[plot_chainage],
-                        y=df['Penetration Rate [mm/rev]'],
-                        mode='lines',
-                        name='Sensor-based Penetration Rate',
-                        line=dict(color='green', dash='dot')
-                    ),
-                    row=i,
-                    col=1
-                )
+            # Special handling for penetration rates
+            if feature in ['Penetration Rate [mm/rev]', 'Sensor-based Penetration Rate'] and penetration_rates_available:
+                line_style = 'dash' if feature == 'Penetration Rate [mm/rev]' else 'dot'
+                line_color = 'blue' if feature == 'Penetration Rate [mm/rev]' else 'green'
+                
+                pen_rate_data = numeric_df[[plot_chainage, 'Penetration Rate [mm/rev]']].dropna()
+                
+                if len(pen_rate_data) > 0:
+                    fig.add_trace(
+                        go.Scatter(
+                            x=pen_rate_data[plot_chainage],
+                            y=pen_rate_data['Penetration Rate [mm/rev]'],
+                            mode='lines',
+                            name=f'{"Calculated" if feature == "Penetration Rate [mm/rev]" else "Sensor-based"} Penetration Rate',
+                            line=dict(color=line_color, dash=line_style)
+                        ),
+                        row=i,
+                        col=1
+                    )
 
-            # Update y-axis titles with more space
+            # Update y-axis titles
             fig.update_yaxes(
-                title_text=feature_name, 
-                row=i, 
+                title_text=feature,
+                row=i,
                 col=1,
-                title_standoff=40  # Increased standoff to prevent overlap
+                title_standoff=40
             )
-        except Exception as e:
-            st.warning(f"Error plotting feature '{feature}': {e}")
 
-    # Update layout with adjusted dimensions
+        except Exception as e:
+            st.warning(f"Error plotting feature '{feature}': {str(e)}")
+
+    # Update layout
     fig.update_layout(
-        height=300 * len(available_features),  # Dynamic height based on number of features
+        height=300 * len(available_features),
         width=1200,
         title_text='Parameters vs Chainage',
         showlegend=True,
@@ -243,10 +259,10 @@ def create_parameters_vs_chainage(df, selected_features, chainage_column, penetr
             xanchor="right",
             x=1
         ),
-        margin=dict(t=100, l=150, r=50, b=50)  # Increased left margin for y-axis labels
+        margin=dict(t=100, l=150, r=50, b=50)
     )
 
-    # Update x-axis title only for the bottom subplot
+    # Update x-axis title
     fig.update_xaxes(title_text='Chainage [mm]', row=len(available_features), col=1)
 
     st.plotly_chart(fig, use_container_width=True)
