@@ -100,49 +100,79 @@ def calculate_torque(working_pressure, torque_constant, current_speed=None, n1=N
     return torque
 
 # Function to calculate derived features
-def calculate_derived_features(df, working_pressure_col, revolution_col, n1, torque_constant, selected_distance, time_col):
+
+def calculate_derived_features(df, time_col, selected_distance, revolution_col='None'):
+    """
+    Calculate average speed and penetration rate from drilling data.
+    
+    Parameters:
+    df (pd.DataFrame): Input dataframe containing drilling data
+    time_col (str): Name of the column containing time data
+    selected_distance (str): Name of the column containing distance/chainage data
+    revolution_col (str): Name of the column containing revolution/RPM data
+    
+    Returns:
+    pd.DataFrame: DataFrame with added average speed and penetration rate columns
+    """
     try:
-        # Calculate torque
-        if working_pressure_col and revolution_col and revolution_col != 'None':
-            df[working_pressure_col] = pd.to_numeric(df[working_pressure_col], errors='coerce')
-            df[revolution_col] = pd.to_numeric(df[revolution_col], errors='coerce')
+        # Ensure the required columns exist
+        if not all(col in df.columns for col in [time_col, selected_distance] + ([revolution_col] if revolution_col != 'None' else [])):
+            missing_cols = [col for col in [time_col, selected_distance, revolution_col] if col != 'None' and col not in df.columns]
+            raise ValueError(f"Missing required columns: {missing_cols}")
 
-            # Calculate torque
-            df['Calculated torque [kNm]'] = df.apply(
-                lambda row: calculate_torque(row[working_pressure_col], torque_constant, row[revolution_col], n1)
-                if pd.notna(row[working_pressure_col]) and pd.notna(row[revolution_col]) else np.nan,
-                axis=1
-            )
+        # Initialize new columns with NaN
+        df['Average Speed (mm/min)'] = np.nan
+        df['Penetration Rate [mm/rev]'] = np.nan
 
-        # Calculate average speed (mm/min) based on chainage distance and time
         if time_col and selected_distance:
+            # Convert distance to numeric, handling any non-numeric values
             df[selected_distance] = pd.to_numeric(df[selected_distance], errors='coerce')
+            
+            # Calculate time difference
             if pd.api.types.is_datetime64_any_dtype(df[time_col]):
-                total_time = (df[time_col].max() - df[time_col].min()).total_seconds() / 60  # Convert to minutes
+                # For datetime format
+                time_diff = df[time_col].diff()
+                total_time = time_diff.sum().total_seconds() / 60  # Convert to minutes
             else:
-                # Assuming time_col is in milliseconds
-                total_time = (df[time_col].max() - df[time_col].min()) / 60000  # Convert milliseconds to minutes
+                # For milliseconds format
+                time_diff = df[time_col].diff()
+                total_time = time_diff.sum() / 60000  # Convert milliseconds to minutes
 
-            total_distance = df[selected_distance].max() - df[selected_distance].min()
-            average_speed = total_distance / total_time if total_time > 0 else np.nan
-            df['Average Speed (mm/min)'] = average_speed
+            # Calculate distance difference
+            distance_diff = df[selected_distance].diff()
+            total_distance = distance_diff.sum()
 
-            # Calculate penetration rate based on average speed and RPM
-            if revolution_col != 'None' and revolution_col in df.columns:
-                rpm_mean = df[revolution_col].mean()
-                df['Penetration Rate [mm/rev]'] = df['Average Speed (mm/min)'] / rpm_mean if rpm_mean != 0 else np.nan
-            else:
-                df['Penetration Rate [mm/rev]'] = np.nan
-        else:
-            df['Average Speed (mm/min)'] = np.nan
-            df['Penetration Rate [mm/rev]'] = np.nan
+            # Calculate speed for each row
+            if total_time > 0:
+                # Calculate instantaneous speed for each interval
+                df['Average Speed (mm/min)'] = (distance_diff / (time_diff.dt.total_seconds() / 60) 
+                                              if pd.api.types.is_datetime64_any_dtype(df[time_col])
+                                              else distance_diff / (time_diff / 60000))
+                
+                # Calculate overall average speed
+                df['Average Speed (mm/min)'] = df['Average Speed (mm/min)'].fillna(method='ffill')
+                
+                # Calculate penetration rate if revolution data is available
+                if revolution_col != 'None' and revolution_col in df.columns:
+                    # Convert revolution data to numeric if needed
+                    df[revolution_col] = pd.to_numeric(df[revolution_col], errors='coerce')
+                    
+                    # Calculate penetration rate for non-zero RPM values
+                    mask = df[revolution_col] != 0
+                    df.loc[mask, 'Penetration Rate [mm/rev]'] = (
+                        df.loc[mask, 'Average Speed (mm/min)'] / df.loc[mask, revolution_col]
+                    )
+
+        # Replace infinite values with NaN
+        df['Average Speed (mm/min)'] = df['Average Speed (mm/min)'].replace([np.inf, -np.inf], np.nan)
+        df['Penetration Rate [mm/rev]'] = df['Penetration Rate [mm/rev]'].replace([np.inf, -np.inf], np.nan)
 
         return df
 
     except Exception as e:
-        st.error(f"Error calculating derived features: {e}")
+        st.error(f"Error calculating derived features: {str(e)}")
         return df
-
+        
 def handle_sampling_aggregation(df, column_name, aggregation_interval, mode='chainage'):
     """
     Handle data sampling and aggregation with proper error handling
