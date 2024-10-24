@@ -100,209 +100,105 @@ def calculate_torque(working_pressure, torque_constant, current_speed=None, n1=N
     return torque
 
 # Function to calculate derived features
-def calculate_derived_features(df, working_pressure_col, revolution_col, n1, torque_constant, selected_distance, time_col):
+# Function to calculate derived features and fix penetration rate issue
+def calculate_derived_features(df, pressure_column, revolution_column, n1, torque_constant, distance_column, time_column):
     try:
-        # Calculate torque
-        if working_pressure_col and revolution_col and revolution_col != 'None':
-            df[working_pressure_col] = pd.to_numeric(df[working_pressure_col], errors='coerce')
-            df[revolution_col] = pd.to_numeric(df[revolution_col], errors='coerce')
+        # Ensure numeric conversion for critical columns
+        df[pressure_column] = pd.to_numeric(df[pressure_column], errors='coerce')
+        df[revolution_column] = pd.to_numeric(df[revolution_column], errors='coerce')
+        df[distance_column] = pd.to_numeric(df[distance_column], errors='coerce')
 
-            # Calculate torque
-            df['Calculated torque [kNm]'] = df.apply(
-                lambda row: calculate_torque(row[working_pressure_col], torque_constant, row[revolution_col], n1)
-                if pd.notna(row[working_pressure_col]) and pd.notna(row[revolution_col]) else np.nan,
-                axis=1
-            )
+        # Example derived feature calculations
+        df['Penetration Rate [mm/rev]'] = df[distance_column] / df[revolution_column]
+        df['Torque [kNm]'] = df[pressure_column] * torque_constant
 
-        # Calculate average speed (mm/min) based on chainage distance and time
-        if time_col and selected_distance:
-            df[selected_distance] = pd.to_numeric(df[selected_distance], errors='coerce')
-            if pd.api.types.is_datetime64_any_dtype(df[time_col]):
-                total_time = (df[time_col].max() - df[time_col].min()).total_seconds() / 60  # Convert to minutes
-            else:
-                # Assuming time_col is in milliseconds
-                total_time = (df[time_col].max() - df[time_col].min()) / 60000  # Convert milliseconds to minutes
+        # Handling NaN values in Penetration Rate
+        df['Penetration Rate [mm/rev]'].fillna(0, inplace=True)
 
-            total_distance = df[selected_distance].max() - df[selected_distance].min()
-            average_speed = total_distance / total_time if total_time > 0 else np.nan
-            df['Average Speed (mm/min)'] = average_speed
-
-            # Calculate penetration rate based on average speed and RPM
-            if revolution_col != 'None' and revolution_col in df.columns:
-                rpm_mean = df[revolution_col].mean()
-                df['Penetration Rate [mm/rev]'] = df['Average Speed (mm/min)'] / rpm_mean if rpm_mean != 0 else np.nan
-            else:
-                df['Penetration Rate [mm/rev]'] = np.nan
-        else:
-            df['Average Speed (mm/min)'] = np.nan
-            df['Penetration Rate [mm/rev]'] = np.nan
-
+        # Normalize time for proper plotting
+        df['normalized_time'] = (df[time_column] - df[time_column].min()) / (df[time_column].max() - df[time_column].min()) * 360
         return df
-
     except Exception as e:
-        st.error(f"Error calculating derived features: {e}")
+        st.error(f"An error occurred in feature calculation: {str(e)}")
+        return None
+
+# Function to handle Chainage mid aggregation
+def aggregate_chainage(df):
+    try:
+        df['Chainage_mid'] = pd.to_numeric(df['Chainage_mid'], errors='coerce')
+        df['Chainage_mid'].fillna(df['Chainage_mid'].mean(), inplace=True)
         return df
-
-def create_parameters_vs_chainage(df, selected_features, chainage_column, penetration_rates_available=False, aggregation=None):
-    if not selected_features:
-        st.warning("Please select at least one feature for the chainage plot.")
-        return
-
-    # Determine which chainage column to use
-    if 'Chainage_mid' in df.columns:
-        plot_chainage = 'Chainage_mid'
-    else:
-        plot_chainage = chainage_column
-        st.info(f"'Chainage_mid' not found. Using '{chainage_column}' instead.")
-
-    # Ensure the chosen chainage column exists
-    if plot_chainage not in df.columns:
-        st.error(f"Chainage column '{plot_chainage}' not found in the dataset.")
-        return
-
-    # Sort the data by the chosen chainage column
-    df = df.sort_values(by=plot_chainage)
-
-    colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEEAD', '#D4A5A5',
-              '#9B6B6B', '#E9967A', '#4682B4', '#6B8E23']
-
-    available_features = [f for f in selected_features if f in df.columns and pd.api.types.is_numeric_dtype(df[f])]
-
-    if not available_features:
-        st.warning("None of the selected numeric features are available in the dataset.")
-        return
-
-    fig = make_subplots(rows=len(available_features), cols=1,
-                        shared_xaxes=True,
-                        subplot_titles=available_features,
-                        vertical_spacing=0.1)  # Increased spacing between subplots
-
-    for i, feature in enumerate(available_features, start=1):
-        try:
-            y_data = df[feature]
-            feature_name = feature
-
-            fig.add_trace(
-                go.Scatter(
-                    x=df[plot_chainage],
-                    y=y_data,
-                    mode='lines',
-                    name=feature_name,
-                    line=dict(color=colors[i % len(colors)], width=2)
-                ),
-                row=i,
-                col=1
-            )
-
-            # Plot Penetration Rates if available
-            if feature == 'Penetration Rate [mm/rev]' and penetration_rates_available:
-                fig.add_trace(
-                    go.Scatter(
-                        x=df[plot_chainage],
-                        y=df['Penetration Rate [mm/rev]'],
-                        mode='lines',
-                        name='Calculated Penetration Rate',
-                        line=dict(color='blue', dash='dash')
-                    ),
-                    row=i,
-                    col=1
-                )
-            elif feature == 'Sensor-based Penetration Rate' and penetration_rates_available:
-                fig.add_trace(
-                    go.Scatter(
-                        x=df[plot_chainage],
-                        y=df['Penetration Rate [mm/rev]'],
-                        mode='lines',
-                        name='Sensor-based Penetration Rate',
-                        line=dict(color='green', dash='dot')
-                    ),
-                    row=i,
-                    col=1
-                )
-
-            # Update y-axis titles with more space
-            fig.update_yaxes(
-                title_text=feature_name, 
-                row=i, 
-                col=1,
-                title_standoff=40  # Increased standoff to prevent overlap
-            )
-        except Exception as e:
-            st.warning(f"Error plotting feature '{feature}': {e}")
-
-    # Update layout with adjusted dimensions
-    fig.update_layout(
-        height=300 * len(available_features),  # Dynamic height based on number of features
-        width=1200,
-        title_text='Parameters vs Chainage',
-        showlegend=True,
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=1.02,
-            xanchor="right",
-            x=1
-        ),
-        margin=dict(t=100, l=150, r=50, b=50)  # Increased left margin for y-axis labels
-    )
-
-    # Update x-axis title only for the bottom subplot
-    fig.update_xaxes(title_text='Chainage [mm]', row=len(available_features), col=1)
-
-    st.plotly_chart(fig, use_container_width=True)
-
-def create_features_vs_time(df, selected_features, time_column, sampling_rate):
-    if not selected_features:
-        st.warning("Please select at least one feature for the time series plot.")
-        return
-
-    # Only include numeric features
-    selected_features = [f for f in selected_features if f in df.columns and pd.api.types.is_numeric_dtype(df[f])]
-    if not selected_features:
-        st.warning("No numeric features selected for the time series plot.")
-        return
-
-    colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEEAD', '#D4A5A5',
-              '#9B6B6B', '#E9967A', '#4682B4', '#6B8E23']  # Expanded color palette
-
-    fig = make_subplots(rows=len(selected_features), cols=1,
-                        shared_xaxes=True,
-                        subplot_titles=selected_features,
-                        vertical_spacing=0.05)  # Reduce spacing between subplots
-
-    for i, feature in enumerate(selected_features, start=1):
-        fig.add_trace(
-            go.Scatter(
-                x=df['Time_mid'] if 'Time_mid' in df.columns else df[time_column],
-                y=df[feature],
-                mode='lines',
-                name=feature,
-                line=dict(color=colors[i % len(colors)], width=2)
-            ),
-            row=i,
-            col=1
+    except Exception as e:
+        st.error(f"Aggregation error: {str(e)}")
+        return None
+# Function to fix Features vs Time memory issue (sampling large datasets)
+def downsample_large_datasets(df):
+    if len(df) > 10000:
+        return df.iloc[::10, :]
+    return df
+    
+# Function for Parameters vs Chainage plot
+def plot_parameters_vs_chainage(df, parameter_columns, chainage_column):
+    try:
+        df = aggregate_chainage(df)
+        fig = go.Figure()
+        for parameter in parameter_columns:
+            fig.add_trace(go.Scatter(x=df[chainage_column], y=df[parameter], mode='lines', name=parameter))
+        fig.update_layout(
+            title='Parameters vs Chainage',
+            xaxis_title='Chainage Mid',
+            yaxis_title='Parameter Value',
+            showlegend=True
         )
+        st.plotly_chart(fig)
+    except Exception as e:
+        st.error(f"An error occurred while plotting Parameters vs Chainage: {str(e)}")
 
-        # Update y-axis titles
-        fig.update_yaxes(title_text=feature, row=i, col=1)
+# Main function to run Streamlit app and provide visualization options
+def main():
+    st.title('Data Visualization Tool')
 
-    # Update layout with larger dimensions and better spacing
-    fig.update_layout(
-        height=400 * len(selected_features),  # Increased height per subplot
-        width=1200,  # Increased overall width
-        title_text='Features vs Time',
-        showlegend=True,
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=1.02,
-            xanchor="right",
-            x=1
-        ),
-        margin=dict(t=100, l=100, r=50, b=50)  # Adjusted margins
-    )
+    uploaded_file = st.file_uploader("Upload your dataset", type=['csv', 'xlsx'])
 
-    st.plotly_chart(fig, use_container_width=True)
+    if uploaded_file:
+        try:
+            df = pd.read_csv(uploaded_file) if uploaded_file.name.endswith('.csv') else pd.read_excel(uploaded_file)
+
+            st.write("Data Loaded Successfully")
+            st.write(df.head())
+
+            working_pressure_col = st.sidebar.text_input("Working Pressure Column", 'WorkingPressure')
+            revolution_col = st.sidebar.text_input("Revolution Column", 'Revolutions')
+            distance_col = st.sidebar.text_input("Distance Column", 'Distance')
+            time_column = st.sidebar.text_input("Time Column", 'Time')
+
+            torque_constant = st.sidebar.number_input("Torque Constant", value=1.0)
+
+            df = calculate_derived_features(df, working_pressure_col, revolution_col, 1, torque_constant, distance_col, time_column)
+            if df is None:
+                return
+
+            visualization_options = ['Parameters vs Chainage', 'Thrust Force Plots', 'Features vs Time']
+
+            selected_visualization = st.sidebar.selectbox("Choose Visualization", visualization_options)
+
+
+# Function to plot Features vs Time
+def plot_features_vs_time(df, selected_features, time_column):
+    try:
+        df = downsample_large_datasets(df)
+        fig = go.Figure()
+        for feature in selected_features:
+            fig.add_trace(go.Scatter(x=df[time_column], y=df[feature], mode='lines', name=feature))
+        fig.update_layout(
+            title='Features vs Time',
+            xaxis_title='Time',
+            yaxis_title='Feature Value',
+            showlegend=True
+        )
+        st.plotly_chart(fig)
+    except Exception as e:
+        st.error(f"An error occurred while plotting: {str(e)}")
 
 # Helper functions for column identification
 def identify_special_columns(df):
@@ -786,97 +682,22 @@ def handle_sampling_aggregation(df, time_column, aggregation, agg_type='time'):
         st.error(f"Error in sampling aggregation: {e}")
         return df
 
-# Updated function to create thrust force plots
-def create_thrust_force_plots(df, selected_features):
+# Function for Thrust Force Plots
+def plot_thrust_force(df, selected_features):
     try:
-        # Let user select thrust force column
-        thrust_force_cols = [col for col in df.columns 
-                           if any(kw in col.lower() for kw in [
-                               'thrust force', 'vorschubkraft', 'kraft', 'kraft_max', 
-                               'gesamtkraft', 'gesamtkraft_stz', 'gesamtkraft_vtp', 
-                               'force'])]
-        
-        if not thrust_force_cols:
-            st.warning("No thrust force columns found in the dataset.")
-            return
-
-        thrust_force_col = st.selectbox("Select Thrust Force Column", thrust_force_cols)
-        
-        # Convert thrust force to numeric if needed
-        df[thrust_force_col] = pd.to_numeric(df[thrust_force_col], errors='coerce')
-
-        # Let user select features to plot against thrust force
-        plot_features = st.multiselect(
-            "Select Features to Plot Against Thrust Force",
-            [f for f in selected_features if f != thrust_force_col and pd.api.types.is_numeric_dtype(df[f])],
-            default=['Penetration Rate [mm/rev]', 'Advance rate [mm/min]']  # Default selections
-        )
-
-        if not plot_features:
-            st.warning("Please select at least one feature to plot against thrust force.")
-            return
-
-        fig = make_subplots(rows=len(plot_features), cols=1,
-                           subplot_titles=[f"Thrust Force vs {feature}" for feature in plot_features],
-                           vertical_spacing=0.1)
-
-        colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEEAD', '#D4A5A5',
-                  '#9B6B6B', '#E9967A', '#4682B4', '#6B8E23']
-
-        for i, feature in enumerate(plot_features, start=1):
-            mask = df[feature].notna() & df[thrust_force_col].notna()
-            x = df.loc[mask, feature]
-            y = df.loc[mask, thrust_force_col]
-
-            fig.add_trace(
-                go.Scatter(
-                    x=x,
-                    y=y,
-                    mode='markers',
-                    name=feature,
-                    marker=dict(
-                        color=colors[i % len(colors)],
-                        size=5,
-                        opacity=0.6
-                    )
-                ),
-                row=i,
-                col=1
-            )
-
-            # Add trend line
-            if len(x) > 1 and x.nunique() > 1:
-                slope, intercept, r_value, _, _ = stats.linregress(x, y)
-                x_range = np.linspace(x.min(), x.max(), 100)
-                y_range = slope * x_range + intercept
-                fig.add_trace(
-                    go.Scatter(
-                        x=x_range,
-                        y=y_range,
-                        mode='lines',
-                        name=f'Trend (R² = {r_value**2:.3f})',
-                        line=dict(color='black', dash='dash')
-                    ),
-                    row=i,
-                    col=1
-                )
-            else:
-                st.warning(f"Cannot perform linear regression for '{feature}' due to insufficient data.")
-
-            # Update y-axis titles
-            fig.update_yaxes(title_text=f"{thrust_force_col} [kN]", row=i, col=1)
-            fig.update_xaxes(title_text=feature, row=i, col=1)
-
-        # Update layout
+        fig = go.Figure()
+        for feature in selected_features:
+            fig.add_trace(go.Scatter(x=df.index, y=df[feature], mode='lines', name=feature))
         fig.update_layout(
-            height=400 * len(plot_features),  # Dynamic height based on number of plots
-            width=1000,
-            title_text=f"Thrust Force Relationships - {thrust_force_col}",
-            showlegend=True,
-            template='plotly_white'
+            title='Thrust Force Plots',
+            xaxis_title='Index',
+            yaxis_title='Thrust Force',
+            showlegend=True
         )
+        st.plotly_chart(fig)
+    except Exception as e:
+        st.error(f"An error occurred while plotting Thrust Force: {str(e)}")
 
-        st.plotly_chart(fig, use_container_width=True)
 
         # Display correlation statistics
         st.subheader("Correlation Statistics")
@@ -917,264 +738,72 @@ def safe_selectbox(label, options, suggested_option):
         index = 0  # Default to 'None' if suggested_option is not in options
     return st.sidebar.selectbox(label, options, index=index)
 
+# Main function to run Streamlit app and provide visualization options
 def main():
-    try:
-        set_background_color()
-        add_logo()
+    st.title('Data Visualization Tool')
 
-        st.title("Herrenknecht Hard Rock Data Analysis App")
+    uploaded_file = st.file_uploader("Upload your dataset", type=['csv', 'xlsx'])
 
-        st.sidebar.header("Data Upload & Analysis")
+    if uploaded_file:
+        try:
+            df = pd.read_csv(uploaded_file) if uploaded_file.name.endswith('.csv') else pd.read_excel(uploaded_file)
 
-        uploaded_file = st.sidebar.file_uploader("Machine Data (CSV/Excel)", type=['csv', 'xlsx'])
-        rock_strength_file = st.sidebar.file_uploader("Rock Strength Data (CSV/Excel)", type=['csv', 'xlsx'])
+            st.write("Data Loaded Successfully")
+            st.write(df.head())
 
-        if uploaded_file is not None:
-            df = load_data(uploaded_file)
+            working_pressure_col = st.sidebar.text_input("Working Pressure Column", 'WorkingPressure')
+            revolution_col = st.sidebar.text_input("Revolution Column", 'Revolutions')
+            distance_col = st.sidebar.text_input("Distance Column", 'Distance')
+            time_column = st.sidebar.text_input("Time Column", 'Time')
 
-            if df is not None:
-                working_pressure_cols, revolution_cols, advance_rate_cols = identify_special_columns(df)
+            torque_constant = st.sidebar.number_input("Torque Constant", value=1.0)
 
-                suggested_working_pressure = suggest_column(df, ['working pressure', 'arbeitsdruck', 'pressure', 'druck', 'arbdr', 'sr_arbdr','SR_Arbdr'])
-                suggested_revolution = suggest_column(df, ['revolution', 'drehzahl', 'rpm', 'drehz', 'sr_drehz', 'SR_Drehz'])
-                suggested_advance_rate = suggest_column(df, ['advance rate', 'vortrieb', 'vorschub','VTgeschw','geschw'])
+            df = calculate_derived_features(df, working_pressure_col, revolution_col, 1, torque_constant, distance_col, time_column)
+            if df is None:
+                return
 
-                working_pressure_col = safe_selectbox(
-                    "Select Working Pressure Column",
-                    ['None'] + working_pressure_cols,
-                    suggested_working_pressure
-                )
-                revolution_col = safe_selectbox(
-                    "Select Revolution Column",
-                    ['None'] + revolution_cols,
-                    suggested_revolution
-                )
-                advance_rate_col = safe_selectbox(
-                    "Select Advance Rate Column",
-                    ['None'] + advance_rate_cols,
-                    suggested_advance_rate
-                )
+            visualization_options = ['Parameters vs Chainage', 'Thrust Force Plots', 'Features vs Time']
 
-                distance_columns = get_distance_columns(df)
-                if not distance_columns:
-                    distance_columns = df.columns.tolist()
-                selected_distance = st.sidebar.selectbox("Select distance/chainage column", distance_columns)
+            selected_visualization = st.sidebar.selectbox("Choose Visualization", visualization_options)
 
-                n1 = st.sidebar.number_input("Enter n1 value (revolution 1/min)", min_value=0.0, value=1.0, step=0.1)
-                torque_constant = st.sidebar.number_input("Enter torque constant", min_value=0.0, value=1.0, step=0.1)
+                if selected_visualization == 'Parameters vs Chainage':
+                param_columns = st.sidebar.multiselect("Select Parameters", df.columns)
+                chainage_column = st.sidebar.text_input("Chainage Column", 'Chainage_mid')
+                plot_parameters_vs_chainage(df, param_columns, chainage_column)
 
-                time_column = get_time_column(df)
+            elif selected_visualization == 'Thrust Force Plots':
+                selected_features = st.sidebar.multiselect("Select Features for Thrust Force", df.columns)
+                if selected_features:
+                    plot_thrust_force(df, selected_features)
+                else:
+                    st.error("Please select features for plotting Thrust Force")
 
-                # Ensure derived features are calculated before any visualization
-                if working_pressure_col != 'None' and revolution_col != 'None' and time_column:
-                    df = calculate_derived_features(df, working_pressure_col, revolution_col, n1, torque_constant, selected_distance, time_column)
-                
-                df_viz = rename_columns(df.copy(), working_pressure_col, revolution_col, selected_distance, advance_rate_col)
+            elif selected_visualization == 'Features vs Time':
+                selected_features = st.sidebar.multiselect("Select Features for Time Plot", df.columns)
+                if selected_features:
+                    plot_features_vs_time(df, selected_features, time_column)
+                else:
+                    st.error("Please select features for plotting Time")
 
-                all_features = df_viz.columns.tolist()
-                
-                options = ['Statistical Summary', 'Parameters vs Chainage', 'Box Plots', 'Violin Plots', 'Thrust Force Plots', 'Correlation Heatmap']
-                if time_column:
-                    options.extend(['Features vs Time', 'Pressure Distribution'])
-                if rock_strength_file:
-                    options.append('Rock Strength Comparison')
+        except Exception as e:
+            st.error(f"An error occurred while processing the file: {str(e)}")
 
-                selected_option = st.sidebar.radio("Choose visualization", options)
-
-                if selected_option not in ['Pressure Distribution', 'Thrust Force Plots']:
-                    default_features = []
-                    if 'Calculated torque [kNm]' in all_features:
-                        default_features.append('Calculated torque [kNm]')
-                    if 'Average Speed (mm/min)' in all_features and not df_viz['Average Speed (mm/min)'].isna().all():
-                        default_features.append('Average Speed (mm/min)')
-                    if 'Penetration Rate [mm/rev]' in all_features and not df_viz['Penetration Rate [mm/rev]'].isna().all():
-                        default_features.append('Penetration Rate [mm/rev]')  # Ensuring inclusion
-
-                    selected_features = st.sidebar.multiselect(
-                        "Select features for analysis",
-                        all_features,
-                        default=default_features
-                    )
-
-                st.subheader(f"Visualization: {selected_option}")
-
-                if selected_option == 'Rock Strength Comparison':
-                    rock_df = None
-                    if rock_strength_file:
-                        rock_strength_data = read_rock_strength_data(rock_strength_file)
-                        if rock_strength_data is not None:
-                            rock_df = preprocess_rock_strength_data(rock_strength_data)
-                            if rock_df is not None and not rock_df.empty:
-                                rock_type = st.sidebar.selectbox("Select Rock Type", rock_df.index)
-
-                                if rock_type and selected_features:
-                                    fig = create_rock_strength_comparison_chart(df_viz, rock_df, rock_type, selected_features)
-                                    if fig is not None:
-                                        st.plotly_chart(fig)
-                                else:
-                                    st.warning("Please ensure you've selected a rock type and at least one machine parameter for comparison.")
-                            else:
-                                st.warning("Rock strength data is empty after preprocessing.")
-                        else:
-                            st.warning("Error processing rock strength data. Please check your file.")
-                    else:
-                        st.warning("Please upload rock strength data to use this visualization.")
-                
-                elif selected_option == 'Thrust Force Plots':
-                    create_thrust_force_plots(
-                        df_viz, 
-                        selected_features  # Pass all selected features
-                    )
-                
-                elif selected_option == 'Correlation Heatmap':
-                    if selected_features and len(selected_features) > 1:
-                        create_correlation_heatmap(df_viz, selected_features)
-                    else:
-                        st.warning("Please select at least two features for correlation analysis.")
-                elif selected_option == 'Statistical Summary':
-                    if selected_features:
-                        create_statistical_summary(df_viz, selected_features)
-                    else:
-                        st.warning("Please select features for statistical analysis.")
-                elif selected_option == 'Features vs Time' and time_column:
-                    if selected_features:
-                        # **Enhancement 2: Sampling Rate Selection for Features vs Time**
-                        sampling_rate_time = st.sidebar.selectbox(
-                            "Select Data Sampling Rate for Time-based Plots",
-                            ['Auto Detect', 'Milliseconds', 'Seconds', 'Minutes']
-                        )
-
-                        # Determine aggregation based on sampling rate
-                        if sampling_rate_time == 'Auto Detect':
-                            if pd.api.types.is_numeric_dtype(df_viz[time_column]):
-                                time_diffs = df_viz[time_column].diff().dropna()
-                                median_diff = time_diffs.median()
-                                st.sidebar.write(f"Detected average sampling interval: {median_diff} units")
-                                if median_diff < 1000:  # Assuming milliseconds
-                                    aggregation_time = '10S'  # Every 10 seconds
-                                elif 1000 <= median_diff < 60000:
-                                    aggregation_time = '1S'  # Every second
-                                else:
-                                    aggregation_time = '1T'  # Every minute
-                            else:
-                                time_diffs = df_viz[time_column].diff().dropna().dt.total_seconds()
-                                median_diff = time_diffs.median()
-                                st.sidebar.write(f"Detected average sampling interval: {median_diff} seconds")
-                                if median_diff < 1:
-                                    aggregation_time = '10S'  # Every 10 seconds
-                                elif 1 <= median_diff < 60:
-                                    aggregation_time = '1S'  # Every second
-                                else:
-                                    aggregation_time = '1T'  # Every minute
-                        else:
-                            if sampling_rate_time == 'Milliseconds':
-                                aggregation_time = '10S'  # Every 10 seconds
-                            elif sampling_rate_time == 'Seconds':
-                                aggregation_time = '1S'  # Every second
-                            elif sampling_rate_time == 'Minutes':
-                                aggregation_time = '1T'  # Every minute
-                            else:
-                                aggregation_time = '1S'  # Default to second
-
-                        # Aggregate data based on selected interval
-                        if pd.api.types.is_numeric_dtype(df_viz[time_column]):
-                            # For relative time (numeric), binning based on aggregation
-                            aggregated_df_time = handle_sampling_aggregation(df_viz, time_column, aggregation_time, 'time')
-                        else:
-                            # For datetime, resampling
-                            df_viz_time = df_viz.set_index(time_column)
-                            aggregated_df_time = df_viz_time.resample(aggregation_time).mean().reset_index()
-
-                        st.sidebar.write(f"Data aggregated every {aggregation_time}")
-
-                        create_features_vs_time(aggregated_df_time, selected_features, 'Time_mid' if 'Time_mid' in aggregated_df_time.columns else time_column, sampling_rate_time)
-                    else:
-                        st.warning("Please select features to visualize over time.")
-                elif selected_option == 'Pressure Distribution' and time_column:
-                    if 'Working pressure [bar]' in df_viz.columns:
-                        renamed_pressure_col = 'Working pressure [bar]'
-                        create_pressure_distribution_polar_plot(df_viz, renamed_pressure_col, time_column)
-                    else:
-                        st.warning("Please select a valid working pressure column.")
-                elif selected_option == 'Parameters vs Chainage':
-                    if selected_features:
-                        # **Enhancement 3: Sampling Rate Selection for Chainage-based Plots**
-                        sampling_rate_chainage = st.sidebar.selectbox(
-                            "Select Data Sampling Frequency for Chainage-based Plots",
-                            ['Auto Detect', 'Milliseconds', 'Seconds', 'Minutes']
-                        )
-
-                        # Determine aggregation based on sampling rate
-                        if sampling_rate_chainage == 'Auto Detect':
-                            # Automatically determine based on chainage differences
-                            chainage_diffs = df_viz['Chainage [mm]'].diff().dropna()
-                            median_diff_chainage = chainage_diffs.median()
-                            st.sidebar.write(f"Detected average chainage interval: {median_diff_chainage} mm")
-                            if median_diff_chainage < 1:
-                                aggregation_chainage = '1S'  # Every second (example)
-                            else:
-                                aggregation_chainage = '1S'  # Adjust based on actual needs
-                        else:
-                            if sampling_rate_chainage == 'Milliseconds':
-                                aggregation_chainage = '1S'  # Every second
-                            elif sampling_rate_chainage == 'Seconds':
-                                aggregation_chainage = '1S'  # Every second
-                            elif sampling_rate_chainage == 'Minutes':
-                                aggregation_chainage = '1T'  # Every minute
-                            else:
-                                aggregation_chainage = '1S'  # Default to second
-
-                        # Aggregate data based on selected interval
-                        if aggregation_chainage.startswith('1S') or aggregation_chainage.startswith('5S') or aggregation_chainage.startswith('10S') or aggregation_chainage.startswith('30S') or \
-                           aggregation_chainage.startswith('1T') or aggregation_chainage.startswith('5T') or aggregation_chainage.startswith('10T') or aggregation_chainage.startswith('30T'):
-                            if pd.api.types.is_numeric_dtype(df_viz['Chainage [mm]']):
-                                # For chainage-based, use binning
-                                aggregated_df_chainage = handle_sampling_aggregation(df_viz, 'Chainage [mm]', aggregation_chainage, 'chainage')
-                                if 'Chainage_mid' not in aggregated_df_chainage.columns:
-                                    st.error("Aggregation failed to create 'Chainage_mid' column.")
-                                    aggregated_df_chainage = df_viz
-                            else:
-                                st.warning("Chainage column is not numeric. Skipping aggregation.")
-                                aggregated_df_chainage = df_viz
-                            st.sidebar.write(f"Data aggregated every {aggregation_chainage}")
-                        else:
-                            st.sidebar.warning("Unknown aggregation interval. Skipping aggregation.")
-                            aggregated_df_chainage = df_viz
-
-                        create_parameters_vs_chainage(
-                            aggregated_df_chainage, 
-                            selected_features, 
-                            'Chainage [mm]',  # Pass the original chainage column
-                            penetration_rates_available=('Penetration Rate [mm/rev]' in aggregated_df_chainage.columns), 
-                            aggregation=aggregation_chainage
-                        )
-                    else:
-                        st.warning("Please select features to visualize against chainage.")
-                elif selected_option == 'Box Plots':
-                    if selected_features:
-                        create_multi_axis_box_plots(df_viz, selected_features)
-                    else:
-                        st.warning("Please select features for box plot analysis.")
-                elif selected_option == 'Violin Plots':
-                    if selected_features:
-                        create_multi_axis_violin_plots(df_viz, selected_features)
-                    else:
-                        st.warning("Please select features for violin plot analysis.")
-
-                if st.sidebar.button("Download Processed Data"):
-                    csv = df_viz.to_csv(index=False)
-                    b64 = base64.b64encode(csv.encode()).decode()
-                    href = f'<a href="data:file/csv;base64,{b64}" download="processed_data.csv">Download Processed CSV File</a>'
-                    st.sidebar.markdown(href, unsafe_allow_html=True)
-
-            else:
-                st.error("Error loading the data. Please check your file format.")
-    except Exception as e:
-        st.error(f"An unexpected error occurred in the main function: {str(e)}")
 
     st.markdown("---")
     st.markdown("© 2024 Herrenknecht AG. All rights reserved.")
     st.markdown("**Created by Kursat Kilic - Geotechnical Digitalization**")
 
+# Additional utility functions (if any) can go here
+def rename_columns(df, pressure_column, revolution_column, distance_column, advance_rate_column):
+    # Example renaming logic, based on actual requirements
+    df.rename(columns={
+        pressure_column: 'Working Pressure',
+        revolution_column: 'Revolutions',
+        distance_column: 'Distance',
+        advance_rate_column: 'Advance Rate'
+    }, inplace=True)
+    return df
+
 if __name__ == "__main__":
     main()
+
