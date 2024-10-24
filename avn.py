@@ -99,19 +99,16 @@ def calculate_torque(working_pressure, torque_constant, current_speed=None, n1=N
             torque = (n1 / current_speed) * torque_constant * working_pressure
     return torque
 
-# Function to calculate derived features
-import pandas as pd
-import numpy as np
 
-def calculate_derived_features(
-    df,
-    time_col,
-    selected_distance,
-    working_pressure_col,
-    n1,
-    torque_constant,
-    revolution_col='None'
-):
+df = calculate_derived_features(
+    df=df,
+    time_col=time_column,
+    selected_distance=selected_distance,
+    working_pressure_col=working_pressure_col,
+    n1=n1,
+    torque_constant=torque_constant,
+    revolution_col=revolution_col
+)
     """
     Calculate derived features including torque, average speed and penetration rate from drilling data.
     
@@ -1026,7 +1023,15 @@ def main():
 
                 # Ensure derived features are calculated before any visualization
                 if working_pressure_col != 'None' and revolution_col != 'None' and time_column:
-                    df = calculate_derived_features(df, working_pressure_col, revolution_col, n1, torque_constant, selected_distance, time_column)
+                    df = calculate_derived_features(
+                        df=df,
+                        time_col=time_column,
+                        selected_distance=selected_distance,
+                        working_pressure_col=working_pressure_col,
+                        n1=n1,
+                        torque_constant=torque_constant,
+                        revolution_col=revolution_col
+                    )
                 
                 df_viz = rename_columns(df.copy(), working_pressure_col, revolution_col, selected_distance, advance_rate_col)
 
